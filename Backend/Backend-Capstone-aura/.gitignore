@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+uploads/*
+!uploads/.gitkeep
+.env
+.env.local
+*.log
+.DS_Store
+.idea/
+.vscode/
+*.tsbuildinfo
+prisma/*.db
+prisma/*.db-journal
+
+# Graphify knowledge-graph output (generated locally, do not commit)
+graphify-out/

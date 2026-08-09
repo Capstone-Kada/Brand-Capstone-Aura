@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        try {
+          var realFetch = window.fetch;
+          if (realFetch) {
+            var patchObj = function (obj) {
+              try {
+                if (obj) {
+                  Object.defineProperty(obj, 'fetch', {
+                    get: function () { return realFetch; },
+                    set: function (v) { realFetch = v; },
+                    configurable: true,
+                    enumerable: true
+                  });
+                }
+              } catch (e) {}
+            };
+            patchObj(Window.prototype);
+            patchObj(window);
+            if (typeof globalThis !== 'undefined') patchObj(globalThis);
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <title>BeautyAI - AI Skin Recommendation & Affiliate Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Michroma&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400,300&display=swap" rel="stylesheet">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
