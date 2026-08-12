@@ -21,6 +21,9 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'debug']).default('info'),
   REDIS_URL: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
+  INGREDIENT_AI_BASE_URL: z.string().url().optional(),
+  INGREDIENT_AI_API_KEY: z.string().optional(),
+  INGREDIENT_AI_MODEL: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

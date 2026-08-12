@@ -20,6 +20,12 @@ export const appConfig = {
     timeoutMs: config.AI_SERVICE_TIMEOUT_MS,
     predictPath: '/predict',
   },
+  ingredientAi: {
+    baseUrl: config.INGREDIENT_AI_BASE_URL?.replace(/\/$/, ''),
+    apiKey: config.INGREDIENT_AI_API_KEY,
+    model: config.INGREDIENT_AI_MODEL ?? 'gpt-4o-mini',
+    timeoutMs: 30_000,
+  },
   corsOrigin: config.CORS_ORIGIN,
   rateLimit: {
     windowMs: config.RATE_LIMIT_WINDOW_MS,

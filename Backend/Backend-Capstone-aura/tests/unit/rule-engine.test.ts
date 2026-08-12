@@ -37,6 +37,9 @@ describe('RecommendationRuleEngine (AURA makeup PRD)', () => {
     matchScoreWeight: 80,
     sourceUrl: null,
     affiliateUrl: 'https://www.sociolla.com/example',
+    composition: [],
+    compositionStatus: 'pending',
+    compositionUpdatedAt: null,
     makeupTypes: [
       {
         id: '1',

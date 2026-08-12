@@ -8,7 +8,6 @@ import {
   Share2, 
   RotateCcw, 
   ShoppingBag,
-  ShieldAlert,
   Loader2,
   ChevronLeft,
   User,
@@ -23,7 +22,11 @@ import {
   GitCompare,
   Plus,
   Minus,
-  Heart
+  Heart,
+  ShieldCheck,
+  Zap,
+  Scan,
+  Info
 } from 'lucide-react';
 import { RouteView, Product, AIAnalysisResult, UserProfile } from '../../types';
 import { Button, Card, Badge, Progress } from '../../components/ui/UIComponents';
@@ -46,7 +49,7 @@ interface PublicAIExperienceProps {
   onRecordClick?: (listingId: string) => void;
 }
 
-type ScanFlowStep = 'upload' | 'camera-guide' | 'camera' | 'scanning' | 'select-area' | 'enter-name' | 'result' | 'recommendations';
+type ScanFlowStep = 'gateway' | 'camera-guide' | 'camera' | 'scanning' | 'select-area' | 'enter-name' | 'result' | 'recommendations';
 type AnalysisArea = 'bibir' | 'shade';
 
 export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
@@ -97,19 +100,54 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   const [initialLoadProgress, setInitialLoadProgress] = useState<number>(0);
   const [loadingStageText, setLoadingStageText] = useState<string>('Memulai Aura AI Beauty Engine...');
 
-  const [currentStep, setCurrentStep] = useState<ScanFlowStep>('upload');
+  const [currentStep, setCurrentStep] = useState<ScanFlowStep>('gateway');
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [selectedArea, setSelectedArea] = useState<AnalysisArea>('shade');
+  const [selectedArea, setSelectedArea] = useState<AnalysisArea | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
+  const [subQuestionIndex, setSubQuestionIndex] = useState<number>(0);
   
-  // Beauty Preference Questionnaire State (AURA PRD Feature 2)
-  const [budgetPref, setBudgetPref] = useState<string>('Rp150K - Rp300K');
-  const [finishPref, setFinishPref] = useState<string>('Natural Satin');
-  const [occasionPref, setOccasionPref] = useState<string>('Daily Wear');
+  // Beauty Preference Questionnaire State (AURA PRD Feature 2) - Mandatory selections
+  const [budgetPref, setBudgetPref] = useState<string>('');
+  const [finishPref, setFinishPref] = useState<string>('');
+  const [occasionPref, setOccasionPref] = useState<string>('');
   
   // Product Comparison State
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
+
+  const [animatedScore, setAnimatedScore] = useState<number>(0);
+
+  // Result step score count-up animation with 1.2s delay
+  useEffect(() => {
+    if (currentStep === 'result') {
+      const targetScore = scanResult ? Math.min(100, Math.max(0, Math.round(scanResult.confidence))) : 87;
+      setAnimatedScore(0);
+      let startTime: number | null = null;
+      const delayMs = 1200; // 1.2s delay
+      const duration = 1400;
+      let animId: number;
+
+      const timer = setTimeout(() => {
+        const animateCounter = (timestamp: number) => {
+          if (!startTime) startTime = timestamp;
+          const elapsed = timestamp - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          setAnimatedScore(Math.round(eased * targetScore));
+          if (progress < 1) {
+            animId = requestAnimationFrame(animateCounter);
+          }
+        };
+
+        animId = requestAnimationFrame(animateCounter);
+      }, delayMs);
+
+      return () => {
+        clearTimeout(timer);
+        if (animId) cancelAnimationFrame(animId);
+      };
+    }
+  }, [currentStep, scanResult]);
 
   // Pre-select top products for comparison when reaching result step
   useEffect(() => {
@@ -250,6 +288,11 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     onStartScan(imgUrl);
     setCurrentStep('scanning');
     setScanProgress(0);
+    setSelectedArea(null);
+    setBudgetPref('');
+    setFinishPref('');
+    setOccasionPref('');
+    setSubQuestionIndex(0);
     setScanStatusText('Mendeteksi pola kontur & fitur wajah...');
 
     const interval = setInterval(() => {
@@ -294,8 +337,12 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     stopCamera();
     setCapturedImage(null);
     setCustomerName('');
-    setSelectedArea('shade');
-    setCurrentStep('upload');
+    setSelectedArea(null);
+    setBudgetPref('');
+    setFinishPref('');
+    setOccasionPref('');
+    setSubQuestionIndex(0);
+    setCurrentStep('gateway');
     onResetScan();
   };
 
@@ -342,7 +389,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
   // Steps map for top progress bar
   const stepNumber = {
-    'upload': 1,
+    'gateway': 1,
     'camera-guide': 1,
     'camera': 1,
     'scanning': 1,
@@ -352,8 +399,74 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     'recommendations': 5
   }[currentStep];
 
+  const gatewayCenterContent = (
+    <>
+      {isPublicView && creator.name && (
+        <p className="text-xs font-semibold text-zinc-400">
+          Dipersembahkan oleh <span className="text-zinc-700">{creator.name}</span>
+        </p>
+      )}
+
+      <div className="space-y-3">
+        <h1 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-balance leading-[1.1]">
+          <span className="text-zinc-950">What's your</span>
+          <br />
+          <span className="text-[#F26CA7]">beauty match?</span>
+        </h1>
+
+        <p className="text-sm text-zinc-500 font-medium leading-relaxed max-w-md mx-auto">
+          Get personalized product recommendations based on your unique skin, tone, and features.
+        </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center divide-y sm:divide-y-0 sm:divide-x divide-zinc-200">
+        {[
+          { icon: ShieldCheck, title: 'Secure & Private', desc: 'Your data is safe with us.' },
+          { icon: Sparkles, title: 'AI-Powered', desc: 'Advanced AI for accurate results.' },
+          { icon: Zap, title: 'Instant Results', desc: 'Get your match in seconds.' },
+        ].map((item) => (
+          <div key={item.title} className="flex items-start gap-2 px-4 py-2.5 sm:py-0 text-left">
+            <div className="w-8 h-8 rounded-lg bg-[#F26CA7]/10 text-[#F26CA7] flex items-center justify-center shrink-0">
+              <item.icon className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-zinc-900 leading-tight">{item.title}</p>
+              <p className="text-[11px] text-zinc-500 leading-snug">{item.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-3 pt-6">
+        <Button
+          variant="tertiary"
+          size="lg"
+          onClick={() => setCurrentStep('camera-guide')}
+          className="group mx-auto"
+        >
+          <Scan className="w-4 h-4" />
+          <span>Start AI Scan</span>
+          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+        </Button>
+
+        <label className="flex w-fit mx-auto items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-[#F26CA7] cursor-pointer transition-colors">
+          <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+          <Upload className="w-3.5 h-3.5" />
+          <span>or upload a photo from your gallery</span>
+        </label>
+      </div>
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-[#0F0F11] pb-16 pt-6 px-4 sm:px-6 lg:px-8 relative selection:bg-[#FF73B6] selection:text-white">
+    <div
+      className={`${currentStep === 'camera-guide' || currentStep === 'camera' || currentStep === 'scanning' || currentStep === 'select-area' || currentStep === 'enter-name' || currentStep === 'result' ? 'h-dvh overflow-hidden p-0 bg-cover bg-center bg-no-repeat' : currentStep === 'gateway' ? 'min-h-screen lg:h-screen overflow-hidden p-0 bg-cover bg-center' : 'min-h-screen bg-[#FAFAFA] pb-16 pt-6 px-4 sm:px-6 lg:px-8 overflow-x-hidden'} text-[#0F0F11] relative selection:bg-[#FF73B6] selection:text-white`}
+      style={{
+        backgroundImage: (currentStep === 'camera-guide' || currentStep === 'camera' || currentStep === 'scanning' || currentStep === 'select-area' || currentStep === 'enter-name' || currentStep === 'result' || currentStep === 'gateway')
+          ? "url('/image/Background-2.png')"
+          : undefined,
+      }}
+    >
       
       {/* ELEGANT MINIMALIST LOADING OVERLAY */}
       <AnimatePresence>
@@ -375,11 +488,8 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
               
               {/* Brand & Main Title */}
               <div className="space-y-1.5">
-                <p className="text-sm sm:text-base font-normal tracking-[0.1em] text-[#6d4d73]">
-                  Wardah
-                </p>
-                <h1 className="text-lg sm:text-xl font-normal tracking-[0.25em] text-[#5e3e65] uppercase">
-                  VIRTUAL TRY ON
+                <h1 className="text-lg sm:text-xl font-medium tracking-[0.05em] text-[#5e3e65] font-['Outfit']">
+                  Virtual Scan Analysis
                 </h1>
               </div>
 
@@ -414,11 +524,12 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
       {/* Hidden Canvas for Camera Snapshots */}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* TOP NAVBAR HEADER FOR DESKTOP & MOBILE */}
-      <header className="max-w-7xl mx-auto mb-8">
-        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-4 sm:p-5 border border-zinc-200/80 flex flex-wrap items-center justify-between gap-4">
+      {/* TOP NAVBAR HEADER FOR DESKTOP & MOBILE (omitted on gateway, camera-guide, camera, scanning, select-area, enter-name, result, and recommendations steps) */}
+      {currentStep !== 'gateway' && currentStep !== 'camera-guide' && currentStep !== 'camera' && currentStep !== 'scanning' && currentStep !== 'select-area' && currentStep !== 'enter-name' && currentStep !== 'result' && currentStep !== 'recommendations' && (
+      <header className={`${currentStep === 'camera' ? 'w-full mb-0' : 'max-w-7xl mx-auto mb-8'} relative z-10 lg:shrink-0`}>
+        <div className={`${currentStep === 'camera' ? 'p-4 sm:p-5 flex items-center justify-center' : 'p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4'}`}>
           
-          <div className="flex items-center gap-3">
+          {currentStep !== 'camera' && <div className="flex items-center gap-3">
             {!isPublicView ? (
               <div className="flex items-center gap-2.5">
                 <button
@@ -432,7 +543,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                   <span>Kembali ke Dashboard</span>
                 </button>
               </div>
-            ) : (
+            ) : currentStep !== 'gateway' ? (
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#F26CA7] to-[#FFB6D9] text-white flex items-center justify-center font-bold text-sm">
                   A
@@ -447,33 +558,35 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                   <span className="text-[10px] text-zinc-400 block font-medium">Personal Shade Finder</span>
                 </div>
               </div>
-            )}
-          </div>
+            ) : null}
+          </div>}
 
-          {/* Stepper Navigation Indicator */}
-          <div className="hidden md:flex items-center gap-2 bg-zinc-50 px-4 py-1.5 rounded-full text-xs font-semibold">
-            <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 1 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
-              1. Foto
-            </span>
-            <span className="text-zinc-300">→</span>
-            <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 2 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
-              2. Area
-            </span>
-            <span className="text-zinc-300">→</span>
-            <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 3 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
-              3. Profil
-            </span>
-            <span className="text-zinc-300">→</span>
-            <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 4 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
-              4. Hasil
-            </span>
-            <span className="text-zinc-300">→</span>
-            <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 5 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
-              5. Produk
-            </span>
-          </div>
+          {/* Stepper Navigation Indicator (hidden on the gateway welcome screen) */}
+          {currentStep !== 'gateway' && (
+            <div className="hidden md:flex items-center gap-2 bg-zinc-50 px-4 py-1.5 rounded-full text-xs font-semibold">
+              <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 1 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
+                1. Foto
+              </span>
+              <span className="text-zinc-300">→</span>
+              <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 2 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
+                2. Area
+              </span>
+              <span className="text-zinc-300">→</span>
+              <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 3 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
+                3. Profil
+              </span>
+              <span className="text-zinc-300">→</span>
+              <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 4 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
+                4. Hasil
+              </span>
+              <span className="text-zinc-300">→</span>
+              <span className={`px-2.5 py-0.5 rounded-full ${stepNumber >= 5 ? 'bg-[#FF73B6] text-white font-bold' : 'text-zinc-400'}`}>
+                5. Produk
+              </span>
+            </div>
+          )}
 
-          {!isPublicView && (
+          {!isPublicView && currentStep !== 'camera' && (
             <div className="flex items-center gap-2.5">
               <button
                 onClick={triggerReplayLoading}
@@ -488,42 +601,191 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
         </div>
       </header>
+      )}
+      {/* CONDITIONAL LAYOUT: NEW REDESIGNED GATEWAY SCREEN MATCHING SPECIFICATION */}
+      {currentStep === 'gateway' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+          className="relative min-h-screen lg:h-screen w-full overflow-hidden bg-cover bg-center bg-no-repeat flex flex-col justify-between m-0 p-0"
+          style={{
+            backgroundImage: "url('/image/Background-2.png')",
+          }}
+        >
+          {/* FLOATING TOP DASHBOARD CONTROLS (FOR NON-PUBLIC / ADMIN PREVIEW) */}
+          {!isPublicView && (
+            <div className="absolute top-4 left-4 right-4 z-40 flex items-center justify-between pointer-events-auto">
+              <button
+                onClick={() => {
+                  stopCamera();
+                  onNavigate('dashboard');
+                }}
+                className="flex items-center gap-2 text-xs font-bold text-zinc-700 hover:text-zinc-950 bg-white/80 hover:bg-white backdrop-blur-md px-4 py-2 rounded-xl transition-all cursor-pointer shadow-xs border border-white/60"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Kembali ke Dashboard</span>
+              </button>
+              <button
+                onClick={triggerReplayLoading}
+                className="text-[11px] font-bold text-[#FF73B6] hover:text-white bg-white/80 hover:bg-[#FF73B6] backdrop-blur-md px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border border-white/60"
+                title="Tes Loading Screen"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Tes Loading</span>
+              </button>
+            </div>
+          )}
+          {/* TOP SECTION: TITLE & RESPONSIVE CTA BUTTON SHIFTED DOWN TOWARDS MIDDLE */}
+          {/* TOP SECTION: TITLE */}
+          <div className="pt-6 sm:pt-8 lg:pt-10 pb-1 text-center z-20 space-y-1 px-4 flex flex-col items-center shrink-0">
+            {isPublicView && creator.name && (
+              <p className="text-xs font-medium text-[#545459]/80 mb-1">
+                Dipersembahkan oleh <span className="font-semibold text-[#545459]">{creator.name}</span>
+              </p>
+            )}
+            <h1 className="text-2xl sm:text-4xl lg:text-[38px] font-medium font-['Satoshi'] text-center tracking-[-0.05em] leading-[1.05] sm:leading-[44px]" style={{ fontSize: '38px' }}>
+              <span style={{ color: '#545459' }}>Find Your Perfect</span>
+              <br />
+              <span style={{ color: '#545459' }}>Beauty </span>
+              <span style={{ color: '#F6559C' }}>Match</span>
+            </h1>
+          </div>
 
-      {/* CONDITIONAL LAYOUT: FULL WIDTH FOR SCANNING STEP vs 2-COLUMN GRID FOR OTHER STEPS */}
-      {currentStep === 'scanning' ? (
-        /* FULL WIDTH SCANNING CONTAINER (MATCHING DESIGN REFERENCE) */
-        <div className="max-w-md mx-auto py-2 px-2">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            className="space-y-6"
-          >
-            {/* Top Scanned Face Avatar with Title */}
-            <div className="text-center space-y-3">
-              <div className="relative w-20 h-20 mx-auto">
-                {capturedImage && (
-                  <img
-                    src={capturedImage}
-                    alt="Pemindaian Wajah"
-                    className="w-full h-full object-cover rounded-3xl shadow-md border-2 border-white"
-                  />
-                )}
-                {/* Glowing Overlay Badge */}
-                <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-gradient-to-tr from-[#FF73B6] to-[#C786FF] text-white flex items-center justify-center shadow-md border-2 border-white">
-                  <Sparkles className="w-4 h-4 stroke-[2.2] animate-pulse" />
+          {/* MAIN CENTER COMPOSITION WITH CARDS CLOSER TO WOMEN-PORTAL */}
+          <div className="relative flex-1 w-full max-w-7xl mx-auto flex items-end justify-center px-2 sm:px-6 lg:px-8 pb-2 sm:pb-6 overflow-visible">
+            
+            {/* LEFT FLOATING CARDS (BALANCED OPTIMAL SIZE) */}
+            {/* Top Left Card: More.png */}
+            <motion.div
+              animate={{ y: [0, -14, 0] }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 0 }}
+              className="absolute top-[-2%] sm:top-[0%] lg:top-[1%] left-[2%] sm:left-[6%] lg:left-[10%] z-20 hover:scale-105 transition-transform duration-300 pointer-events-none"
+            >
+              <img
+                src="/image/More.png"
+                alt="More - Confident You"
+                className="w-28 sm:w-44 lg:w-56 h-auto drop-shadow-xl rounded-2xl select-none"
+              />
+            </motion.div>
+
+            {/* Bottom Left Card: Personalized.png */}
+            <motion.div
+              animate={{ y: [0, -16, 0] }}
+              transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
+              className="absolute bottom-[10%] sm:bottom-[12%] lg:bottom-[15%] left-[2%] sm:left-[6%] lg:left-[10%] z-20 hover:scale-105 transition-transform duration-300 pointer-events-none"
+            >
+              <img
+                src="/image/Personalized.png"
+                alt="Personalized for You"
+                className="w-32 sm:w-48 lg:w-60 h-auto drop-shadow-xl rounded-2xl select-none"
+              />
+            </motion.div>
+
+            {/* RIGHT FLOATING CARDS (BALANCED OPTIMAL SIZE) */}
+            {/* Top Right Card: real result.png */}
+            <motion.div
+              animate={{ y: [0, -15, 0] }}
+              transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
+              className="absolute top-[0%] sm:top-[2%] lg:top-[3%] right-[2%] sm:right-[6%] lg:right-[10%] z-20 hover:scale-105 transition-transform duration-300 pointer-events-none"
+            >
+              <img
+                src="/image/real%20result.png"
+                alt="Real Results - For Real You"
+                className="w-32 sm:w-48 lg:w-60 h-auto drop-shadow-xl rounded-2xl select-none"
+              />
+            </motion.div>
+
+            {/* Bottom Right Card: More.png */}
+            <motion.div
+              animate={{ y: [0, -14, 0] }}
+              transition={{ duration: 3.8, repeat: Infinity, ease: 'easeInOut', delay: 1.2 }}
+              className="absolute bottom-[9%] sm:bottom-[11%] lg:bottom-[13%] right-[2%] sm:right-[6%] lg:right-[10%] z-20 hover:scale-105 transition-transform duration-300 pointer-events-none"
+            >
+              <img
+                src="/image/More.png"
+                alt="More - Confident You"
+                className="w-28 sm:w-44 lg:w-56 h-auto drop-shadow-xl rounded-2xl select-none"
+              />
+            </motion.div>
+
+            {/* CENTER MODEL IMAGE (-MT-[20PX]) & RESPONSIVE BUTTON AT BOTTOM */}
+            <div className="relative z-10 w-[86vw] max-w-[340px] sm:max-w-[460px] lg:max-w-[400px] flex flex-col items-center -mt-[20px] pb-0">
+              <div className="relative w-full flex flex-col items-center">
+                <img
+                  src="/image/women-portal.png"
+                  alt="Beauty AI Match Model"
+                  className="w-full h-auto object-contain select-none pointer-events-none block"
+                />
+
+                {/* Primary Button "Start Ai Scan" at bottom (Raised by total 45px) */}
+                <div className="absolute inset-x-0 bottom-[2%] sm:bottom-[4%] -translate-y-[45px] flex flex-col items-center justify-center z-30 pointer-events-auto px-4">
+                  <Button
+                    variant="primary"
+                    onClick={() => setCurrentStep('camera-guide')}
+                    className="rounded-full shadow-xl hover:shadow-2xl hover:scale-108 active:scale-95 transition-all duration-300 font-medium tracking-wide cursor-pointer text-xs sm:text-sm whitespace-nowrap"
+                    style={{ padding: '10px 30px' }}
+                  >
+                    <span>Start Ai Scan</span>
+                  </Button>
                 </div>
               </div>
-
-              <div className="space-y-1">
-                <h2 className="text-xl sm:text-2xl font-black text-zinc-950 tracking-tight">
-                  Real-Time AI Analysis
-                </h2>
-                <p className="text-xs sm:text-sm text-zinc-500 font-medium h-5">
-                  {scanStatusText}
-                </p>
-              </div>
             </div>
+
+          </div>
+        </motion.div>
+      ) : currentStep === 'scanning' ? (
+        /* FULL WIDTH SCANNING CONTAINER WITH BACKGROUND-2 & HERO OVERLAY */
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.98 }} 
+          animate={{ opacity: 1, scale: 1 }} 
+          transition={{ duration: 0.3 }}
+          className="w-full"
+        >
+          <div
+            className="relative h-dvh bg-cover bg-center bg-no-repeat p-6 sm:p-10 overflow-hidden flex flex-col justify-between items-center text-[#545459] font-['Satoshi']"
+            style={{ backgroundImage: "url('/image/Background-2.png')" }}
+          >
+            {/* HERO SECTION STYLE GLASS OVERLAY */}
+            <div className="absolute inset-0 bg-white/40 backdrop-blur-[3px] pointer-events-none z-0" />
+
+            {/* Top Header Row */}
+            <div className="absolute top-6 left-0 w-full flex items-center justify-start z-30 px-6 sm:px-10 pointer-events-auto">
+              <button
+                onClick={() => setCurrentStep('camera')}
+                className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
+                title="Kembali"
+              >
+                <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+              </button>
+            </div>
+
+            <div className="relative z-10 w-full max-w-xl sm:max-w-2xl mx-auto mt-10 sm:mt-14 mb-auto space-y-6 px-4">
+              {/* Top Scanned Face Avatar with Title */}
+              <div className="text-center space-y-3">
+                <div className="relative w-20 h-20 mx-auto">
+                  {capturedImage && (
+                    <img
+                      src={capturedImage}
+                      alt="Pemindaian Wajah"
+                      className="w-full h-full object-cover rounded-3xl shadow-md border-2 border-white"
+                    />
+                  )}
+                  {/* Glowing Overlay Badge */}
+                  <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-gradient-to-tr from-[#FF73B6] to-[#C786FF] text-white flex items-center justify-center shadow-md border-2 border-white">
+                    <Sparkles className="w-4 h-4 stroke-[2.2] animate-pulse" />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
+                    Real-Time AI Analysis
+                  </h2>
+                  <p className="text-base font-medium tracking-[-0.05em] text-[#545459] h-5" style={{ fontSize: '16px' }}>
+                    {scanStatusText}
+                  </p>
+                </div>
+              </div>
 
             {/* 3D STACKED CARDS ANIMATION CONTAINER */}
             <div className="relative w-full h-[190px] pt-2 flex items-center justify-center">
@@ -574,7 +836,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     stepNum: '05',
                     title: 'Preparing Recommendation',
                     subtitle: 'Menyusun rekomendasi kecantikan personal',
-                    details: 'Menghasilkan panduan kecantikan Wardah tersuai',
+                    details: 'Menghasilkan panduan kecantikan tersuai',
                     icon: Sparkles,
                     minProgress: 90,
                     maxProgress: 100,
@@ -683,72 +945,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
               })()}
             </div>
 
-            {/* Step Timeline Indicator Nodes (1 - 5) */}
-            <div className="pt-2">
-              <div className="flex items-center justify-between max-w-xs mx-auto relative px-2">
-                {/* Connecting Line Background */}
-                <div className="absolute top-3.5 left-6 right-6 h-0.5 bg-zinc-200 -z-0" />
-                <div
-                  className="absolute top-3.5 left-6 h-0.5 bg-[#FF73B6] -z-0 transition-all duration-300"
-                  style={{
-                    width: `${
-                      scanProgress < 20
-                        ? '0%'
-                        : scanProgress < 45
-                        ? '25%'
-                        : scanProgress < 70
-                        ? '50%'
-                        : scanProgress < 90
-                        ? '75%'
-                        : '100%'
-                    }`,
-                  }}
-                />
 
-                {[
-                  { num: 1, title: 'Face', threshold: 20 },
-                  { num: 2, title: 'Tone', threshold: 45 },
-                  { num: 3, title: 'Undertone', threshold: 70 },
-                  { num: 4, title: 'Products', threshold: 90 },
-                  { num: 5, title: 'Result', threshold: 100 },
-                ].map((st, i) => {
-                  const isCompleted = scanProgress >= st.threshold;
-                  const prevThreshold = i === 0 ? 0 : [20, 45, 70, 90][i - 1];
-                  const isActive = !isCompleted && scanProgress >= prevThreshold;
-
-                  return (
-                    <div key={st.num} className="relative z-10 flex flex-col items-center">
-                      <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
-                          isCompleted
-                            ? 'bg-emerald-500 text-white shadow-xs scale-100'
-                            : isActive
-                            ? 'bg-[#FF73B6] text-white ring-4 ring-[#FF73B6]/20 scale-110 shadow-md'
-                            : 'bg-zinc-100 text-zinc-400 border border-zinc-200'
-                        }`}
-                      >
-                        {isCompleted ? (
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        ) : (
-                          st.num
-                        )}
-                      </div>
-                      <span
-                        className={`text-[9px] mt-1 font-semibold ${
-                          isActive
-                            ? 'text-[#FF73B6]'
-                            : isCompleted
-                            ? 'text-emerald-600'
-                            : 'text-zinc-400'
-                        }`}
-                      >
-                        {st.title}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* Overall Progress Footer */}
             <div className="pt-2 border-t border-zinc-100 space-y-2">
@@ -766,161 +963,15 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
               </div>
             </div>
 
-          </motion.div>
+          </div>
         </div>
+      </motion.div>
       ) : (
         /* MAIN DESKTOP 2-COLUMN GRID LAYOUT FOR ALL OTHER STEPS */
-        <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          {/* LEFT COLUMN: CONDITIONAL CREATOR PROFILE (BEFORE SCAN) */}
-          {currentStep === 'upload' && (
-            <aside className="lg:col-span-4 space-y-6 lg:sticky lg:top-8">
-              
-              <Card className="p-6 bg-white relative overflow-hidden space-y-5 border border-zinc-200/80">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#FF73B6]/20 to-transparent rounded-bl-full pointer-events-none" />
-
-                <div className="flex items-start gap-4">
-                  <div className="relative shrink-0">
-                    <div className="w-20 h-20 rounded-2xl p-1 bg-gradient-to-tr from-[#FF73B6] via-[#C786FF] to-[#FFB6D9] shadow-md">
-                      <img src={creator.avatarUrl} alt={creator.name} className="w-full h-full rounded-xl object-cover" />
-                    </div>
-                    <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1 rounded-full shadow-xs" title="Affiliator Terverifikasi">
-                      <Check className="w-3 h-3 stroke-[3]" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h1 className="text-lg font-black text-zinc-950 truncate">{creator.name}</h1>
-                      <Badge variant="primary" className="text-[9px] px-2 py-0.2">
-                        PRO CREATOR
-                      </Badge>
-                    </div>
-                    <p className="text-xs font-bold text-[#FF73B6]">{creator.handle}</p>
-                    <p className="text-[11px] text-zinc-500 font-medium line-clamp-2">
-                      "{creator.bio}"
-                    </p>
-                  </div>
-                </div>
-
-                {/* Creator Metrics Bar */}
-                <div className="grid grid-cols-3 gap-2 p-3 bg-zinc-50 rounded-2xl text-center">
-                  <div>
-                    <span className="text-[10px] font-bold text-zinc-400 block uppercase">Match AI</span>
-                    <span className="text-xs font-black text-zinc-900">98.8%</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-zinc-400 block uppercase">Koleksi</span>
-                    <span className="text-xs font-black text-[#FF73B6]">{products.length} Produk</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-zinc-400 block uppercase">Scan Wajah</span>
-                    <span className="text-xs font-black text-emerald-600">12.4k+</span>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500 font-medium">
-                  <span className="flex items-center gap-1.5">
-                    <Award className="w-4 h-4 text-[#FF73B6]" />
-                    <span>Rekomendasi Terkurasi</span>
-                  </span>
-                  <span className="text-[11px] font-bold text-zinc-700 bg-zinc-100 px-2.5 py-1 rounded-lg">
-                    Official Affiliator
-                  </span>
-                </div>
-              </Card>
-
-            </aside>
-          )}
+        <main className={`${currentStep === 'camera-guide' || currentStep === 'camera' || currentStep === 'select-area' || currentStep === 'enter-name' || currentStep === 'result' ? 'w-full p-0' : 'max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start'}`}>
 
           {/* RIGHT COLUMN: INTERACTIVE WORKSPACE */}
-          <section className={`${currentStep !== 'upload' ? 'lg:col-span-12' : 'lg:col-span-8'} space-y-6`}>
-            
-            {/* STEP 1: INITIAL CHOICE (UPLOAD OR LIVE CAMERA) */}
-            {currentStep === 'upload' && (
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-                <Card className="p-6 sm:p-8 space-y-8 bg-white border border-zinc-200/80">
-                  
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-100 pb-6">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="primary" className="text-[10px]">
-                          LANGKAH 1 DARI 3
-                        </Badge>
-                        <span className="text-xs text-zinc-400 font-semibold">• AI Scan Studio</span>
-                      </div>
-                      <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-950 tracking-tight">
-                        Analisis Kulit & Rekomendasi Kecantikan
-                      </h2>
-                      <p className="text-xs sm:text-sm text-zinc-500 font-medium leading-relaxed">
-                        Pilih metode pemindaian untuk menganalisis tone kulit & mendapatkan kurasi produk terkompatibel.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Primary Action Buttons Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    
-                    {/* Live Camera Option Card */}
-                    <button
-                      onClick={() => setCurrentStep('camera-guide')}
-                      className="group p-6 rounded-3xl bg-[#FF73B6]/10 hover:bg-[#FF73B6]/15 text-zinc-900 shadow-2xs text-left transition-all cursor-pointer flex flex-col justify-between space-y-6 relative overflow-hidden"
-                    >
-                      <div className="w-12 h-12 rounded-2xl bg-[#FF73B6] text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
-                        <Camera className="w-6 h-6" />
-                      </div>
-
-                      <div className="space-y-1.5 z-10">
-                        <span className="text-[10px] font-bold text-[#FF73B6] uppercase tracking-wider block">Kamera Langsung</span>
-                        <h3 className="text-lg font-extrabold text-zinc-950">Scan Kamera Langsung</h3>
-                        <p className="text-xs text-zinc-600 leading-relaxed">
-                          Gunakan kamera web/perangkat Anda secara real-time dengan panduan posisi ideal.
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-1 text-xs font-bold text-[#FF73B6] group-hover:translate-x-1 transition-transform">
-                        <span>Buka Panduan Kamera</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </div>
-                    </button>
-
-                    {/* Upload Photo Option Card */}
-                    <label className="group p-6 rounded-3xl bg-zinc-50 hover:bg-zinc-100/80 text-zinc-900 shadow-2xs text-left transition-all cursor-pointer flex flex-col justify-between space-y-6 relative">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-
-                      <div className="w-12 h-12 rounded-2xl bg-white text-zinc-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-                        <Upload className="w-6 h-6" />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Galeri Perangkat</span>
-                        <h3 className="text-lg font-extrabold text-zinc-900">Unggah Foto Selfie</h3>
-                        <p className="text-xs text-zinc-500 leading-relaxed">
-                          Pilih foto selfie resolusi baik dengan pencahayaan terang dari galeri Anda.
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-1 text-xs font-bold text-zinc-800 group-hover:translate-x-1 transition-transform">
-                        <span>Pilih File Foto</span>
-                        <ArrowRight className="w-4 h-4 text-[#FF73B6]" />
-                      </div>
-                    </label>
-
-                  </div>
-
-                  <div className="flex items-center justify-center gap-2 text-xs text-zinc-400 font-medium pt-2 border-t border-zinc-100">
-                    <ShieldAlert className="w-4 h-4 text-zinc-400 shrink-0" />
-                    <span>Privat & Aman. Foto tidak disimpan secara permanen di server publik.</span>
-                  </div>
-
-                </Card>
-              </motion.div>
-            )}
+          <section className="lg:col-span-12 space-y-6">
 
             {/* STEP 1.2: CAMERA POSITIONING GUIDE PAGE (WARDAH / AURA COLOR EXPERT STYLE) */}
             {currentStep === 'camera-guide' && (
@@ -928,71 +979,61 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                 initial={{ opacity: 0, scale: 0.98 }} 
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.3 }}
-                className="w-full max-w-3xl mx-auto"
+                className="w-full"
               >
-                <div className="relative rounded-[36px] bg-gradient-to-br from-[#f8d4b8] via-[#f7ebd9] to-[#d0eee3] p-6 sm:p-10 shadow-xl overflow-hidden border border-white/60 min-h-[600px] flex flex-col justify-between items-center text-[#1c6071]">
-                  
-                  {/* Background Soft Glows */}
-                  <div className="absolute top-0 left-0 w-40 h-40 bg-white/30 rounded-full blur-2xl pointer-events-none" />
-                  <div className="absolute bottom-0 right-0 w-48 h-48 bg-teal-200/20 rounded-full blur-3xl pointer-events-none" />
+              <div
+                className="relative h-dvh bg-cover bg-center bg-no-repeat p-6 sm:p-10 overflow-hidden flex flex-col justify-between items-center text-[#545459] font-['Satoshi']"
+                style={{ backgroundImage: "url('/image/Background-2.png')" }}
+              >
+                {/* HERO SECTION STYLE GLASS OVERLAY */}
+                <div className="absolute inset-0 bg-white/40 backdrop-blur-[3px] pointer-events-none z-0" />
 
                   {/* Top Header Row */}
-                  <div className="w-full flex items-center justify-between z-10">
+                  <div className="absolute top-6 left-0 w-full flex items-center justify-start z-30 px-6 sm:px-10 pointer-events-auto">
                     <button
-                      onClick={() => setCurrentStep('upload')}
-                      className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#1c6071] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
+                      onClick={() => setCurrentStep('gateway')}
+                      className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
                       title="Kembali"
                     >
                       <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
                     </button>
-
-                    <div className="text-center">
-                      <span className="text-[10px] sm:text-xs font-bold tracking-[0.25em] text-[#1c6071] uppercase block opacity-80">
-                        Aura Beauty
-                      </span>
-                      <span className="text-[11px] sm:text-xs font-extrabold tracking-[0.2em] text-[#1c6071] uppercase block">
-                        COLOR EXPERT
-                      </span>
-                    </div>
-
-                    <div className="w-10" />
                   </div>
 
                   {/* Center Title & Guide Badges */}
                   <div className="text-center space-y-4 my-2 z-10 max-w-md mx-auto">
                     <div className="space-y-0.5">
-                      <p className="text-[11px] sm:text-xs font-bold tracking-[0.2em] text-[#2c7283] uppercase">
-                        TIPS FOR IDEAL
+                      <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
+                        Tips for ideal
                       </p>
-                      <h2 className="text-xl sm:text-2xl font-black tracking-wider text-[#1c6071] uppercase">
-                        CAMERA POSITION
+                      <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
+                        Camera position
                       </h2>
                     </div>
 
                     {/* 3 Status Badges */}
                     <div className="flex items-center justify-center gap-3 sm:gap-6 flex-wrap pt-1">
                       <div className="text-center space-y-1">
-                        <p className="text-[9px] sm:text-[10px] font-bold tracking-wider text-[#2c7283] uppercase">LIGHTING CHECK</p>
-                        <span className="inline-block px-3 py-0.5 rounded-full border border-[#1c6071] text-[#1c6071] text-[10px] font-extrabold uppercase tracking-wider bg-white/50 shadow-2xs">
-                          GOOD
+                        <p className="text-[9px] sm:text-[10px] font-medium tracking-[-0.05em] text-[#545459]">Lighting check</p>
+                        <span className="inline-block px-3 py-0.5 rounded-full border border-[#545459]/40 text-[#545459] text-[10px] font-medium tracking-[-0.05em] bg-white/60 shadow-2xs">
+                          Good
                         </span>
                       </div>
                       
-                      <div className="hidden sm:block text-[#2c7283]/40 text-xs">|</div>
+                      <div className="hidden sm:block text-[#545459]/30 text-xs">|</div>
                       
                       <div className="text-center space-y-1">
-                        <p className="text-[9px] sm:text-[10px] font-bold tracking-wider text-[#2c7283] uppercase">LOOK STRAIGHT</p>
-                        <span className="inline-block px-3 py-0.5 rounded-full border border-[#1c6071] text-[#1c6071] text-[10px] font-extrabold uppercase tracking-wider bg-white/50 shadow-2xs">
-                          GOOD
+                        <p className="text-[9px] sm:text-[10px] font-medium tracking-[-0.05em] text-[#545459]">Look straight</p>
+                        <span className="inline-block px-3 py-0.5 rounded-full border border-[#545459]/40 text-[#545459] text-[10px] font-medium tracking-[-0.05em] bg-white/60 shadow-2xs">
+                          Good
                         </span>
                       </div>
 
-                      <div className="hidden sm:block text-[#2c7283]/40 text-xs">|</div>
+                      <div className="hidden sm:block text-[#545459]/30 text-xs">|</div>
 
                       <div className="text-center space-y-1">
-                        <p className="text-[9px] sm:text-[10px] font-bold tracking-wider text-[#2c7283] uppercase">POSITION FACE</p>
-                        <span className="inline-block px-3 py-0.5 rounded-full border border-[#1c6071] text-[#1c6071] text-[10px] font-extrabold uppercase tracking-wider bg-white/50 shadow-2xs">
-                          GOOD
+                        <p className="text-[9px] sm:text-[10px] font-medium tracking-[-0.05em] text-[#545459]">Position face</p>
+                        <span className="inline-block px-3 py-0.5 rounded-full border border-[#545459]/40 text-[#545459] text-[10px] font-medium tracking-[-0.05em] bg-white/60 shadow-2xs">
+                          Good
                         </span>
                       </div>
                     </div>
@@ -1000,11 +1041,11 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
                   {/* Model Face Image with Dashed Oval Guide Overlay */}
                   <div className="relative my-2 z-10">
-                    <div className="w-64 h-72 sm:w-72 sm:h-80 rounded-[32px] bg-white/30 backdrop-blur-md border border-white/70 p-2.5 shadow-lg overflow-hidden relative flex items-center justify-center">
+                    <div className="w-64 h-72 sm:w-72 sm:h-80 rounded-[32px] bg-white/40 backdrop-blur-md border border-white/80 p-[4px] shadow-lg overflow-hidden relative flex items-center justify-center">
                       <img
-                        src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=800"
+                        src="/image/women.png"
                         alt="Face position model guide"
-                        className="w-full h-full object-cover rounded-[24px]"
+                        className="w-full h-full object-cover rounded-[28px]"
                       />
                       {/* Dashed Oval Frame */}
                       <div className="absolute inset-0 m-auto w-44 h-56 sm:w-52 sm:h-64 border-2 border-dashed border-white/90 rounded-[50%] shadow-md pointer-events-none z-20" />
@@ -1015,9 +1056,10 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                   <div className="my-2 z-10 text-center w-full">
                     <button
                       onClick={startCamera}
-                      className="bg-zinc-900 hover:bg-black text-white font-black px-14 py-3 rounded-full text-sm tracking-wide shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
+                      className="bg-[#18181B] hover:bg-[#27272A] text-white font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
+                      style={{ padding: '10px 30px' }}
                     >
-                      Scan
+                      Scan Your Face
                     </button>
                   </div>
 
@@ -1025,469 +1067,854 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
               </motion.div>
             )}
 
-            {/* STEP 1.5: LIVE CAMERA SCANNER VIEW (REDESIGNED BASED ON USER FEEDBACK) */}
+            {/* STEP 1.5: LIVE CAMERA SCANNER VIEW (WITH MATCHING 288PX X 320PX GLASS FRAME) */}
             {currentStep === 'camera' && (
-              <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
-                <Card className="p-6 sm:p-8 bg-white text-zinc-950 relative overflow-hidden space-y-5 rounded-[32px] border border-zinc-200/80">
-                  
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.98 }} 
+                animate={{ opacity: 1, scale: 1 }} 
+                transition={{ duration: 0.3 }}
+                className="w-full"
+              >
+                <div
+                  className="relative h-dvh bg-cover bg-center bg-no-repeat p-6 sm:p-10 overflow-hidden flex flex-col justify-between items-center text-[#545459] font-['Satoshi']"
+                  style={{ backgroundImage: "url('/image/Background-2.png')" }}
+                >
+                  {/* HERO SECTION STYLE GLASS OVERLAY */}
+                  <div className="absolute inset-0 bg-white/40 backdrop-blur-[3px] pointer-events-none z-0" />
+
                   {/* Top Header Row */}
-                  <div className="flex items-center justify-end border-b border-zinc-100 pb-4">
+                  <div className="absolute top-6 left-0 w-full flex items-center justify-start z-30 px-6 sm:px-10 pointer-events-auto">
                     <button
-                      onClick={() => {
-                        stopCamera();
-                        setCurrentStep('upload');
-                      }}
-                      className="p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-600 hover:text-zinc-950 cursor-pointer transition-all"
+                      onClick={() => setCurrentStep('camera-guide')}
+                      className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
+                      title="Kembali"
                     >
-                      <X className="w-5 h-5" />
+                      <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
                     </button>
                   </div>
 
-                  {/* 2. COMPACT FIT-CONTENT DIAGNOSTIC BAR AT THE TOP (NO WRAP) */}
-                  <div className="flex items-center justify-center gap-2 sm:gap-3 flex-nowrap overflow-x-auto max-w-full mx-auto w-fit bg-zinc-50 border border-zinc-200/80 p-2 rounded-2xl whitespace-nowrap">
-                    <div className="px-3 py-1 rounded-xl bg-white border border-zinc-100 flex items-center gap-1.5 shadow-2xs shrink-0">
-                      <span className="text-[10px] font-bold text-zinc-400 uppercase">Pencahayaan:</span>
-                      <span className="text-xs font-black text-emerald-600 flex items-center gap-0.5">
-                        <Check className="w-3.5 h-3.5" /> Optimal
-                      </span>
+                  {/* Header Title & 3 Status Badges */}
+                  <div className="text-center space-y-3 my-2 z-10 max-w-md mx-auto">
+                    <div className="space-y-0.5">
+                      <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
+                        AI Facial Analysis
+                      </p>
+                      <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
+                        Position Your Face
+                      </h2>
                     </div>
 
-                    <div className="px-3 py-1 rounded-xl bg-white border border-zinc-100 flex items-center gap-1.5 shadow-2xs shrink-0">
-                      <span className="text-[10px] font-bold text-zinc-400 uppercase">Posisi Wajah:</span>
-                      <span className="text-xs font-black text-emerald-600 flex items-center gap-0.5">
-                        <Check className="w-3.5 h-3.5" /> Terdeteksi
-                      </span>
-                    </div>
+                    {/* 3 Status Badges */}
+                    <div className="flex items-center justify-center gap-3 sm:gap-6 flex-wrap pt-1">
+                      <div className="text-center space-y-1">
+                        <p className="text-[9px] sm:text-[10px] font-medium tracking-[-0.05em] text-[#545459]">Lighting check</p>
+                        <span className="inline-block px-3 py-0.5 rounded-full border border-[#545459]/40 text-[#545459] text-[10px] font-medium tracking-[-0.05em] bg-white/60 shadow-2xs">
+                          Good
+                        </span>
+                      </div>
+                      
+                      <div className="hidden sm:block text-[#545459]/30 text-xs">|</div>
+                      
+                      <div className="text-center space-y-1">
+                        <p className="text-[9px] sm:text-[10px] font-medium tracking-[-0.05em] text-[#545459]">Look straight</p>
+                        <span className="inline-block px-3 py-0.5 rounded-full border border-[#545459]/40 text-[#545459] text-[10px] font-medium tracking-[-0.05em] bg-white/60 shadow-2xs">
+                          Good
+                        </span>
+                      </div>
 
-                    <div className="px-3 py-1 rounded-xl bg-white border border-zinc-100 flex items-center gap-1.5 shadow-2xs shrink-0">
-                      <span className="text-[10px] font-bold text-zinc-400 uppercase">Pandangan:</span>
-                      <span className="text-xs font-black text-emerald-600 flex items-center gap-0.5">
-                        <Check className="w-3.5 h-3.5" /> Fokus Lurus
-                      </span>
+                      <div className="hidden sm:block text-[#545459]/30 text-xs">|</div>
+
+                      <div className="text-center space-y-1">
+                        <p className="text-[9px] sm:text-[10px] font-medium tracking-[-0.05em] text-[#545459]">Position face</p>
+                        <span className="inline-block px-3 py-0.5 rounded-full border border-[#545459]/40 text-[#545459] text-[10px] font-medium tracking-[-0.05em] bg-white/60 shadow-2xs">
+                          Good
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* CAMERA SCANNER VIEWPORT WITH WHITE CORNER RETICLES & ANIMATED SCANNING LINE */}
-                  <div className="relative w-full max-w-[500px] aspect-[3/4] sm:aspect-[4/5] mx-auto rounded-[32px] overflow-hidden bg-zinc-950 shadow-2xl flex items-center justify-center group">
-                    
-                    {isCameraActive && !cameraError && (
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="w-full h-full object-cover transform -scale-x-100"
+                  {/* Live Camera Viewport inside 288px x 320px Frame (Matching Camera Guide) */}
+                  <div className="relative my-2 z-10">
+                    <div className="w-64 h-72 sm:w-72 sm:h-80 rounded-[32px] bg-white/40 backdrop-blur-md border border-white/80 p-[4px] shadow-lg overflow-hidden relative flex items-center justify-center">
+                      
+                      {isCameraActive && !cameraError && (
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className="w-full h-full object-cover rounded-[28px] transform -scale-x-100 bg-zinc-950"
+                        />
+                      )}
+
+                      {/* Fallback if camera permission fails */}
+                      {cameraError && (
+                        <div className="p-6 text-center space-y-3 text-zinc-800 z-20">
+                          <p className="text-xs text-zinc-600 leading-relaxed font-medium">{cameraError}</p>
+                          <label className="inline-flex items-center gap-2 px-4 py-2 bg-[#18181B] text-white rounded-full text-xs font-medium cursor-pointer hover:bg-zinc-800 transition-all shadow-md">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Unggah Foto</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      )}
+
+                      {/* Dashed Oval Overlay Frame */}
+                      <div className="absolute inset-0 m-auto w-44 h-56 sm:w-52 sm:h-64 border-2 border-dashed border-white/90 rounded-[50%] shadow-md pointer-events-none z-20" />
+
+                      {/* ANIMATED MOVING WHITE SCANNING LINE */}
+                      <motion.div
+                        animate={{ top: ['15%', '85%', '15%'] }}
+                        transition={{ repeat: Infinity, duration: 2.8, ease: 'easeInOut' }}
+                        className="absolute inset-x-6 h-1 bg-gradient-to-r from-transparent via-white to-transparent shadow-[0_0_20px_#ffffff] z-20 pointer-events-none"
                       />
-                    )}
-
-                    {/* Fallback if camera permission fails */}
-                    {cameraError && (
-                      <div className="p-8 text-center space-y-4 text-white z-20">
-                        <p className="text-xs text-zinc-300 leading-relaxed">{cameraError}</p>
-                        <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#FF73B6] text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-[#e05593] transition-all shadow-md">
-                          <Upload className="w-4 h-4" />
-                          <span>Unggah Foto Dari Perangkat</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                          />
-                        </label>
-                      </div>
-                    )}
-
-                    {/* WHITE CORNER RETICLES (BRACKET TARGET FRAMES) */}
-                    <div className="absolute inset-6 sm:inset-10 pointer-events-none flex flex-col justify-between z-10">
-                      <div className="flex justify-between items-start">
-                        <div className="w-12 h-12 border-l-[4px] border-t-[4px] border-white rounded-tl-2xl shadow-md" />
-                        <div className="w-12 h-12 border-r-[4px] border-t-[4px] border-white rounded-tr-2xl shadow-md" />
-                      </div>
-                      <div className="flex justify-between items-end">
-                        <div className="w-12 h-12 border-l-[4px] border-b-[4px] border-white rounded-bl-2xl shadow-md" />
-                        <div className="w-12 h-12 border-r-[4px] border-b-[4px] border-white rounded-br-2xl shadow-md" />
-                      </div>
                     </div>
-
-                    {/* 1. ANIMATED MOVING WHITE SCANNING LINE */}
-                    <motion.div
-                      animate={{ top: ['15%', '85%', '15%'] }}
-                      transition={{ repeat: Infinity, duration: 2.8, ease: 'easeInOut' }}
-                      className="absolute inset-x-8 h-1 bg-gradient-to-r from-transparent via-white to-transparent shadow-[0_0_20px_#ffffff] z-20 pointer-events-none"
-                    />
-
-                    {/* OPTICAL VIGNETTE & BOTTOM GRADIENT */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
-
                   </div>
 
-                  {/* 3. SNAP BUTTON WITH VARIANT PRIMARY (FIT CONTENT) */}
-                  <div className="flex justify-center pt-1">
-                    <Button
+                  {/* SNAP BUTTON */}
+                  <div className="my-2 z-10 text-center w-full">
+                    <button
                       onClick={takeSnapshot}
-                      variant="primary"
-                      size="lg"
-                      icon={<Camera className="w-5 h-5" />}
-                      className="w-fit px-8 py-3.5 text-sm sm:text-base font-extrabold shadow-md rounded-2xl"
+                      className="bg-[#18181B] hover:bg-[#27272A] text-white font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 inline-flex items-center gap-2"
+                      style={{ padding: '10px 30px' }}
                     >
-                      Ambil Foto & Mulai Pemindaian AI
-                    </Button>
+                      <Camera className="w-4 h-4 stroke-[2.2]" />
+                      <span>Ambil Foto</span>
+                    </button>
                   </div>
 
-                </Card>
+                </div>
               </motion.div>
             )}
 
           {/* STEP 3: SELECT ANALYSIS AREA (BIBIR, SHADE, MATA) */}
           {currentStep === 'select-area' && (
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
-              <Card className="p-6 sm:p-8 space-y-8 bg-white border border-zinc-200/80">
-                
-                <div className="space-y-2">
-                  <Badge variant="primary" className="text-[10px]">
-                    LANGKAH 2 DARI 3
-                  </Badge>
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-950 tracking-tight">
-                    Pilih Fokus Area Analisis
-                  </h2>
-                  <p className="text-xs sm:text-sm text-zinc-500 font-medium leading-relaxed">
-                    Pilih area wajah spesifik yang ingin Anda ketahui shade dan rekomendasi produk terkompatibelnya.
-                  </p>
-                </div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.98 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              transition={{ duration: 0.3 }}
+              className="w-full"
+            >
+              <div
+                className="relative h-dvh bg-cover bg-center bg-no-repeat p-6 sm:p-10 overflow-hidden flex flex-col justify-between items-center text-[#545459] font-['Satoshi']"
+                style={{ backgroundImage: "url('/image/Background-2.png')" }}
+              >
+                {/* HERO SECTION STYLE GLASS OVERLAY */}
+                <div className="absolute inset-0 bg-white/40 backdrop-blur-[3px] pointer-events-none z-0" />
 
-                {/* Selection Cards Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  
-                  {/* 1. Lips Option */}
-                  <div
-                    onClick={() => setSelectedArea('bibir')}
-                    className={`p-5 rounded-3xl transition-all cursor-pointer flex flex-col justify-between space-y-4 relative ${
-                      selectedArea === 'bibir'
-                        ? 'bg-[#FF73B6]/10 ring-2 ring-[#FF73B6] shadow-md'
-                        : 'bg-zinc-50 hover:bg-zinc-100'
-                    }`}
+                {/* Top Header Row with Stepper */}
+                <div className="absolute top-6 left-0 w-full flex items-center justify-between z-30 px-6 sm:px-10 pointer-events-auto">
+                  <button
+                    onClick={() => {
+                      if (subQuestionIndex > 0) {
+                        setSubQuestionIndex((prev) => prev - 1);
+                      } else {
+                        setCurrentStep('scanning');
+                      }
+                    }}
+                    className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
+                    title="Kembali"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-2xl ${
-                        selectedArea === 'bibir' ? 'bg-[#FF73B6] text-white shadow-sm' : 'bg-white text-zinc-600 shadow-xs'
-                      }`}>
-                        💋
-                      </div>
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                        selectedArea === 'bibir' ? 'bg-[#FF73B6] text-white' : 'bg-zinc-200'
-                      }`}>
-                        {selectedArea === 'bibir' && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                      </div>
-                    </div>
+                    <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+                  </button>
 
-                    <div className="space-y-1">
-                      <h3 className="text-base font-extrabold text-zinc-900">Lips Focus</h3>
-                      <p className="text-xs text-zinc-500 leading-relaxed">
-                        Analisis warna bibir alami, kelembapan, & rekomendasi Lipstik, Lip Tint, Lip Cream, & Lip Velvet.
-                      </p>
-                    </div>
+                  {/* Top Stepper Pill */}
+                  <div className="hidden sm:flex items-center gap-1.5 bg-white/70 backdrop-blur-md px-4 py-1.5 rounded-full text-[11px] font-medium border border-white/80 shadow-xs font-['Satoshi'] tracking-[-0.03em] text-[#545459]">
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 1 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Photo
+                    </span>
+                    <span className="text-[#545459]/40">→</span>
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 2 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Needs
+                    </span>
+                    <span className="text-[#545459]/40">→</span>
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 3 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Profile
+                    </span>
+                    <span className="text-[#545459]/40">→</span>
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 4 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Results
+                    </span>
+                    <span className="text-[#545459]/40">→</span>
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 5 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Products
+                    </span>
                   </div>
 
-                  {/* 2. Fade & Shade Option */}
-                  <div
-                    onClick={() => setSelectedArea('shade')}
-                    className={`p-5 rounded-3xl transition-all cursor-pointer flex flex-col justify-between space-y-4 relative ${
-                      selectedArea === 'shade'
-                        ? 'bg-[#FF73B6]/10 ring-2 ring-[#FF73B6] shadow-md'
-                        : 'bg-zinc-50 hover:bg-zinc-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-2xl ${
-                        selectedArea === 'shade' ? 'bg-[#FF73B6] text-white shadow-sm' : 'bg-white text-zinc-600 shadow-xs'
-                      }`}>
-                        ✨
-                      </div>
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                        selectedArea === 'shade' ? 'bg-[#FF73B6] text-white' : 'bg-zinc-200'
-                      }`}>
-                        {selectedArea === 'shade' && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                      </div>
-                    </div>
+                  <div className="w-10 hidden sm:block" />
+                </div>
 
-                    <div className="space-y-1">
-                      <h3 className="text-base font-extrabold text-zinc-900">Fade & Shade Focus</h3>
-                      <p className="text-xs text-zinc-500 leading-relaxed">
-                        Analisis Tone Kulit & Undertone untuk Cushion, Foundation, Blush & Cheek Tint, Powder, & Concealer.
-                      </p>
-                    </div>
-                  </div>
+                <div className="relative z-10 w-full max-w-5xl mx-auto my-auto space-y-10 sm:space-y-12 px-4 sm:px-8">
+
+                  {/* QUESTION 1: SELECT FOCUS AREA */}
+                  {subQuestionIndex === 0 && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8 sm:space-y-10">
+                      <div className="text-center space-y-1">
+                        <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
+                          Question 1 of 4
+                        </p>
+                        <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
+                          Select Focus Area
+                        </h2>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 max-w-2xl mx-auto">
+                        {[
+                          { key: 'bibir', title: 'Lips Focus', subtitle: 'Natural lip tone & lipstick shade match', icon: '💄' },
+                          { key: 'shade', title: 'Base / Skin', subtitle: 'Skin Tone & Undertone match for Cushion', icon: '🧴' },
+                        ].map((item) => {
+                          const isSelected = selectedArea === item.key;
+                          return (
+                            <div
+                              key={item.key}
+                              onClick={() => setSelectedArea(item.key)}
+                              className={`relative py-7 px-6 rounded-[24px] bg-white transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-3.5 shadow-sm ${
+                                isSelected
+                                  ? 'border-2 border-[#F6559C] scale-[1.02] shadow-md'
+                                  : 'border border-[#F6559C]/30 hover:border-[#F6559C]/70 hover:shadow-xs'
+                              }`}
+                            >
+                              {/* Overlapping Top-Right Pink Circle Badge */}
+                              {isSelected && (
+                                <div className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full bg-[#F6559C] text-white flex items-center justify-center shadow-md z-20">
+                                  <Check className="w-4 h-4 stroke-[3]" />
+                                </div>
+                              )}
+                              <span className="text-4xl sm:text-5xl">{item.icon}</span>
+                              <div className="space-y-1">
+                                <h3 className="text-lg sm:text-xl font-semibold font-['Satoshi'] tracking-[-0.03em] text-[#27272A]">
+                                  {item.title}
+                                </h3>
+                                <p className="text-xs font-normal text-[#545459]/75 leading-relaxed">
+                                  {item.subtitle}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Next Question Button - Enabled only after Question 1 is answered */}
+                      <div className="text-center w-full pt-2">
+                        <button
+                          disabled={!selectedArea}
+                          onClick={() => setSubQuestionIndex(1)}
+                          className={`font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all inline-flex items-center justify-center gap-2 ${
+                            selectedArea
+                              ? 'bg-[#18181B] hover:bg-[#27272A] text-white cursor-pointer hover:scale-105 active:scale-95'
+                              : 'bg-[#545459]/20 text-[#545459]/50 cursor-not-allowed pointer-events-none'
+                          }`}
+                          style={{ padding: '10px 30px' }}
+                        >
+                          <span>Next Question</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* QUESTION 2: TARGET BUDGET */}
+                  {subQuestionIndex === 1 && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8 sm:space-y-10">
+                      <div className="text-center space-y-1">
+                        <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
+                          Question 2 of 4
+                        </p>
+                        <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
+                          Target Product Budget
+                        </h2>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
+                        {[
+                          { title: 'Di bawah Rp150K', subtitle: 'Affordable everyday beauty essentials', icon: '🏷️' },
+                          { title: 'Rp150K - Rp300K', subtitle: 'Popular mid-range favorites & bestsellers', icon: '💎' },
+                          { title: 'Di atas Rp300K', subtitle: 'Premium formulas & high-end luxury products', icon: '👑' },
+                        ].map((item) => {
+                          const isSelected = budgetPref === item.title;
+                          return (
+                            <div
+                              key={item.title}
+                              onClick={() => setBudgetPref(item.title)}
+                              className={`relative py-7 px-5 rounded-[24px] bg-white transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-3.5 shadow-sm ${
+                                isSelected
+                                  ? 'border-2 border-[#F6559C] scale-[1.02] shadow-md'
+                                  : 'border border-[#F6559C]/30 hover:border-[#F6559C]/70 hover:shadow-xs'
+                              }`}
+                            >
+                              {/* Overlapping Top-Right Pink Circle Badge */}
+                              {isSelected && (
+                                <div className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full bg-[#F6559C] text-white flex items-center justify-center shadow-md z-20">
+                                  <Check className="w-4 h-4 stroke-[3]" />
+                                </div>
+                              )}
+                              <span className="text-3xl sm:text-4xl">{item.icon}</span>
+                              <div className="space-y-1">
+                                <h3 className="text-base sm:text-lg font-semibold font-['Satoshi'] tracking-[-0.03em] text-[#27272A]">
+                                  {item.title}
+                                </h3>
+                                <p className="text-xs font-normal text-[#545459]/75 leading-relaxed">
+                                  {item.subtitle}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Next Question Button - Enabled only after Question 2 is answered */}
+                      <div className="text-center w-full pt-2">
+                        <button
+                          disabled={!budgetPref}
+                          onClick={() => setSubQuestionIndex(2)}
+                          className={`font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all inline-flex items-center justify-center gap-2 ${
+                            budgetPref
+                              ? 'bg-[#18181B] hover:bg-[#27272A] text-white cursor-pointer hover:scale-105 active:scale-95'
+                              : 'bg-[#545459]/20 text-[#545459]/50 cursor-not-allowed pointer-events-none'
+                          }`}
+                          style={{ padding: '10px 30px' }}
+                        >
+                          <span>Next Question</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* QUESTION 3: DESIRED FINISH EFFECT */}
+                  {subQuestionIndex === 2 && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8 sm:space-y-10">
+                      <div className="text-center space-y-1">
+                        <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
+                          Question 3 of 4
+                        </p>
+                        <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
+                          Desired Finish Effect
+                        </h2>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
+                        {[
+                          { title: 'Dewy & Glowing', subtitle: 'Moisturizing, radiant shine & glass skin finish', icon: '🌟' },
+                          { title: 'Matte & Velvet', subtitle: 'Smooth oil-control & long-lasting matte look', icon: '🪵' },
+                          { title: 'Natural Satin', subtitle: 'Lightweight, subtle sheen & everyday natural look', icon: '🌿' },
+                        ].map((item) => {
+                          const isSelected = finishPref === item.title;
+                          return (
+                            <div
+                              key={item.title}
+                              onClick={() => setFinishPref(item.title)}
+                              className={`relative py-7 px-5 rounded-[24px] bg-white transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-3.5 shadow-sm ${
+                                isSelected
+                                  ? 'border-2 border-[#F6559C] scale-[1.02] shadow-md'
+                                  : 'border border-[#F6559C]/30 hover:border-[#F6559C]/70 hover:shadow-xs'
+                              }`}
+                            >
+                              {/* Overlapping Top-Right Pink Circle Badge */}
+                              {isSelected && (
+                                <div className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full bg-[#F6559C] text-white flex items-center justify-center shadow-md z-20">
+                                  <Check className="w-4 h-4 stroke-[3]" />
+                                </div>
+                              )}
+                              <span className="text-3xl sm:text-4xl">{item.icon}</span>
+                              <div className="space-y-1">
+                                <h3 className="text-base sm:text-lg font-semibold font-['Satoshi'] tracking-[-0.03em] text-[#27272A]">
+                                  {item.title}
+                                </h3>
+                                <p className="text-xs font-normal text-[#545459]/75 leading-relaxed">
+                                  {item.subtitle}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Next Question Button - Enabled only after Question 3 is answered */}
+                      <div className="text-center w-full pt-2">
+                        <button
+                          disabled={!finishPref}
+                          onClick={() => setSubQuestionIndex(3)}
+                          className={`font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all inline-flex items-center justify-center gap-2 ${
+                            finishPref
+                              ? 'bg-[#18181B] hover:bg-[#27272A] text-white cursor-pointer hover:scale-105 active:scale-95'
+                              : 'bg-[#545459]/20 text-[#545459]/50 cursor-not-allowed pointer-events-none'
+                          }`}
+                          style={{ padding: '10px 30px' }}
+                        >
+                          <span>Next Question</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* QUESTION 4: USAGE OCCASION */}
+                  {subQuestionIndex === 3 && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8 sm:space-y-10">
+                      <div className="text-center space-y-1">
+                        <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
+                          Question 4 of 4
+                        </p>
+                        <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
+                          Usage Occasion
+                        </h2>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
+                        {[
+                          { title: 'Daily Wear', subtitle: 'Lightweight everyday makeup & natural feel', icon: '☀️' },
+                          { title: 'Office & Casual', subtitle: 'Polished, neat & professional look', icon: '💼' },
+                          { title: 'Special Event', subtitle: 'High-coverage, long-lasting glam', icon: '💃' },
+                        ].map((item) => {
+                          const isSelected = occasionPref === item.title;
+                          return (
+                            <div
+                              key={item.title}
+                              onClick={() => setOccasionPref(item.title)}
+                              className={`relative py-7 px-5 rounded-[24px] bg-white transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-3.5 shadow-sm ${
+                                isSelected
+                                  ? 'border-2 border-[#F6559C] scale-[1.02] shadow-md'
+                                  : 'border border-[#F6559C]/30 hover:border-[#F6559C]/70 hover:shadow-xs'
+                              }`}
+                            >
+                              {/* Overlapping Top-Right Pink Circle Badge */}
+                              {isSelected && (
+                                <div className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full bg-[#F6559C] text-white flex items-center justify-center shadow-md z-20">
+                                  <Check className="w-4 h-4 stroke-[3]" />
+                                </div>
+                              )}
+                              <span className="text-3xl sm:text-4xl">{item.icon}</span>
+                              <div className="space-y-1">
+                                <h3 className="text-base sm:text-lg font-semibold font-['Satoshi'] tracking-[-0.03em] text-[#27272A]">
+                                  {item.title}
+                                </h3>
+                                <p className="text-xs font-normal text-[#545459]/75 leading-relaxed">
+                                  {item.subtitle}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Continue to Profile Button - Enabled only after Question 4 is answered */}
+                      <div className="text-center w-full pt-2">
+                        <button
+                          disabled={!occasionPref}
+                          onClick={() => setCurrentStep('enter-name')}
+                          className={`font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all inline-flex items-center justify-center gap-2 ${
+                            occasionPref
+                              ? 'bg-[#18181B] hover:bg-[#27272A] text-white cursor-pointer hover:scale-105 active:scale-95'
+                              : 'bg-[#545459]/20 text-[#545459]/50 cursor-not-allowed pointer-events-none'
+                          }`}
+                          style={{ padding: '10px 30px' }}
+                        >
+                          <span>Continue to Profile</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
 
                 </div>
 
-                {/* Proceed Button */}
-                <button
-                  onClick={handleProceedToNameStep}
-                  className="w-full py-4 px-6 rounded-2xl bg-[#FF73B6] hover:bg-[#e05593] text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
-                >
-                  <span>Lanjutkan ke Personalisasi Profile</span>
-                  <ArrowRight className="w-5 h-5" />
-                </button>
-
-              </Card>
+              </div>
             </motion.div>
           )}
 
-          {/* STEP 3: QUESTIONNAIRE & PERSONALIZATION */}
+          {/* STEP 3: DEDICATED PROFILE PAGE */}
           {currentStep === 'enter-name' && (
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
-              <Card className="p-6 sm:p-10 space-y-8 bg-white text-left border border-zinc-200/80 rounded-[32px]">
-                
-                <div className="space-y-2">
-                  <Badge variant="primary" className="text-[10px]">
-                    LANGKAH 3 DARI 3
-                  </Badge>
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-950 tracking-tight">
-                    Kuesioner Presisi & Personalisasi Profile
-                  </h2>
-                  <p className="text-xs sm:text-sm text-zinc-500 font-medium leading-relaxed">
-                    Lengkapi preferensi kecantikan Anda agar rekomendasi AI memprioritaskan produk & budget yang paling sesuai.
-                  </p>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.98 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              transition={{ duration: 0.3 }}
+              className="w-full"
+            >
+              <div
+                className="relative h-dvh bg-cover bg-center bg-no-repeat p-6 sm:p-10 overflow-hidden flex flex-col justify-between items-center text-[#545459] font-['Satoshi']"
+                style={{ backgroundImage: "url('/image/Background-2.png')" }}
+              >
+                {/* HERO SECTION STYLE GLASS OVERLAY */}
+                <div className="absolute inset-0 bg-white/40 backdrop-blur-[3px] pointer-events-none z-0" />
+
+                {/* Top Header Row with Stepper */}
+                <div className="absolute top-6 left-0 w-full flex items-center justify-between z-30 px-6 sm:px-10 pointer-events-auto">
+                  <button
+                    onClick={() => setCurrentStep('select-area')}
+                    className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
+                    title="Kembali"
+                  >
+                    <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+                  </button>
+
+                  {/* Top Stepper Pill */}
+                  <div className="hidden sm:flex items-center gap-1.5 bg-white/70 backdrop-blur-md px-4 py-1.5 rounded-full text-[11px] font-medium border border-white/80 shadow-xs font-['Satoshi'] tracking-[-0.03em] text-[#545459]">
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 1 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Photo
+                    </span>
+                    <span className="text-[#545459]/40">→</span>
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 2 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Needs
+                    </span>
+                    <span className="text-[#545459]/40">→</span>
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 3 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Profile
+                    </span>
+                    <span className="text-[#545459]/40">→</span>
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 4 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Results
+                    </span>
+                    <span className="text-[#545459]/40">→</span>
+                    <span className={`px-2.5 py-0.5 rounded-full transition-all ${stepNumber >= 5 ? 'bg-[#18181B] text-white font-semibold shadow-xs' : 'text-[#545459]/60'}`}>
+                      Products
+                    </span>
+                  </div>
+
+                  <div className="w-10 hidden sm:block" />
                 </div>
 
-                <form onSubmit={handleFinalizeResult} className="space-y-6 max-w-xl">
-                  {/* Name Input */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-zinc-800 block uppercase tracking-wider">Nama Lengkap / Panggilan:</label>
-                    <div className="relative">
-                      <User className="w-5 h-5 text-zinc-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        required
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="Contoh: Amanda / Siti / Bunga"
-                        className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-zinc-50 focus:bg-white focus:ring-2 focus:ring-[#FF73B6]/20 text-sm font-semibold outline-hidden transition-all border border-zinc-200/60"
-                      />
-                    </div>
+                {/* Profile Form Content */}
+                <div className="relative z-10 w-full max-w-md mx-auto my-auto space-y-6 px-4">
+                  {/* Title Section */}
+                  <div className="text-center space-y-1">
+                    <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
+                      Step 3 of 3
+                    </p>
+                    <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
+                      Personalize Profile
+                    </h2>
                   </div>
 
-                  {/* Questionnaire: Budget Range */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-zinc-800 block uppercase tracking-wider">Target Budget Produk:</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['Di bawah Rp150K', 'Rp150K - Rp300K', 'Di atas Rp300K'].map((b) => (
-                        <button
-                          type="button"
-                          key={b}
-                          onClick={() => setBudgetPref(b)}
-                          className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                            budgetPref === b
-                              ? 'bg-[#FF73B6] text-white border-[#FF73B6] shadow-2xs'
-                              : 'bg-zinc-50 text-zinc-700 border-zinc-200/80 hover:bg-zinc-100'
-                          }`}
-                        >
-                          {b}
-                        </button>
-                      ))}
+                  {/* Glassmorphism Profile Card */}
+                  <form onSubmit={handleFinalizeResult} className="p-6 sm:p-8 rounded-[28px] backdrop-blur-md bg-white/75 border border-white/80 shadow-xl space-y-6 text-left">
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-[#545459] block tracking-tight">Your Name / Nickname</label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-[#545459]/50 absolute left-4 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          required
+                          value={customerName}
+                          onChange={(e) => setCustomerName(e.target.value)}
+                          placeholder="e.g. Amanda / Bunga"
+                          className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/60 focus:bg-white text-sm font-medium outline-none transition-all border border-[#545459]/20 focus:border-[#F6559C] focus:ring-2 focus:ring-[#F6559C]/20 text-[#545459]"
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Questionnaire: Finish Preference */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-zinc-800 block uppercase tracking-wider">Efek Finish Diharapkan:</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['Dewy Glow', 'Natural Satin', 'Velvet Matte'].map((f) => (
-                        <button
-                          type="button"
-                          key={f}
-                          onClick={() => setFinishPref(f)}
-                          className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                            finishPref === f
-                              ? 'bg-[#FF73B6] text-white border-[#FF73B6] shadow-2xs'
-                              : 'bg-zinc-50 text-zinc-700 border-zinc-200/80 hover:bg-zinc-100'
-                          }`}
-                        >
-                          {f}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                    <button
+                      type="submit"
+                      className="w-full py-3.5 px-6 bg-[#18181B] hover:bg-[#27272A] text-white font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all cursor-pointer hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <span>Reveal AI Results</span>
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                  </form>
+                </div>
 
-                  {/* Questionnaire: Occasion */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-zinc-800 block uppercase tracking-wider">Kebutuhan Penggunaan:</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['Daily Wear', 'Office & Casual', 'Special Event'].map((o) => (
-                        <button
-                          type="button"
-                          key={o}
-                          onClick={() => setOccasionPref(o)}
-                          className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                            occasionPref === o
-                              ? 'bg-[#FF73B6] text-white border-[#FF73B6] shadow-2xs'
-                              : 'bg-zinc-50 text-zinc-700 border-zinc-200/80 hover:bg-zinc-100'
-                          }`}
-                        >
-                          {o}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* STEP 4: RESULT PAGE — GLASSMORPHISM REDESIGN */}
+          {currentStep === 'result' && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.35 }}
+              className="w-full"
+            >
+              <div
+                className="relative h-dvh bg-cover bg-center bg-no-repeat overflow-y-auto flex flex-col font-['Satoshi'] text-[#545459]"
+                style={{ backgroundImage: "url('/image/Background-2.png')" }}
+              >
+                {/* Glass overlay - fixed to cover full viewport during scroll */}
+                <div className="fixed inset-0 bg-white/40 backdrop-blur-[3px] pointer-events-none z-0" />
+
+                {/* Header */}
+                <div className="sticky top-0 left-0 w-full flex items-center justify-between z-30 px-6 sm:px-10 pt-4 pb-1 pointer-events-auto">
+                  <button
+                    onClick={() => setCurrentStep('enter-name')}
+                    className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
+                    title="Kembali"
+                  >
+                    <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+                  </button>
 
                   <button
-                    type="submit"
-                    className="w-full py-4 px-6 rounded-2xl bg-[#FF73B6] hover:bg-[#e05593] text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] mt-4"
+                    onClick={() => setCurrentStep('recommendations')}
+                    className="flex items-center gap-2 bg-[#18181B] hover:bg-[#27272A] text-white font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-xs sm:text-sm px-5 sm:px-6 py-2.5 sm:py-3 shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
                   >
-                    <Sparkles className="w-5 h-5" />
-                    <span>Generate Laporan Hasil AI & Rekomendasi →</span>
+                    <Sparkles className="w-4 h-4 text-[#F6559C]" />
+                    <span>Lihat Rekomendasi Produk</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
-                </form>
-
-              </Card>
-            </motion.div>
-          )}
-
-          {/* STEP 4: FINALIZED PERSONALIZED RESULT ANALYSIS PAGE */}
-          {currentStep === 'result' && (
-            <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-8">
-              
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-                
-                {/* LEFT COLUMN: SCAN RESULT SELFIE CARD MATCHING USER REFERENCE IMAGE */}
-                <div className="lg:col-span-5 flex flex-col h-full">
-                  <div className="relative w-full h-full min-h-[380px] rounded-[32px] overflow-hidden shadow-xl border border-zinc-200 bg-zinc-900 group flex flex-col justify-end">
-                    {capturedImage ? (
-                      <img
-                        src={capturedImage}
-                        alt="Uploaded selfie"
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 w-full h-full flex items-center justify-center text-zinc-500 font-semibold text-xs">
-                        Foto Pemindaian Wajah
-                      </div>
-                    )}
-
-                    {/* Dark Bottom Gradient Overlay matching user's reference image */}
-                    <div className="relative z-10 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex flex-col justify-end p-6 sm:p-7 text-left pointer-events-none pt-24">
-                      <h4 className="text-xl sm:text-2xl font-bold text-white tracking-tight drop-shadow-xs">
-                        Uploaded selfie
-                      </h4>
-                      <p className="text-xs sm:text-sm text-zinc-300/90 font-medium mt-0.5">
-                        Analyzed in under 10 seconds
-                      </p>
-                    </div>
-                  </div>
                 </div>
 
-                {/* RIGHT COLUMN: AI DIAGNOSTIC REPORT BREAKDOWN */}
-                <div className="lg:col-span-7 flex flex-col h-full">
-                  <Card className="p-6 sm:p-8 bg-white border border-zinc-200/80 text-zinc-900 space-y-6 h-full flex flex-col justify-between rounded-[32px]">
-                    
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-100 pb-5">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-xl sm:text-2xl font-black text-zinc-950">
-                            Hasil AI Scan: {customerName || 'Customer'} ✨
-                          </h3>
-                        </div>
-                        <p className="text-xs text-emerald-600 font-bold flex items-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                          <span>AI Confidence: {scanResult ? `${scanResult.confidence.toFixed(1)}%` : '—'}</span>
-                        </p>
-                      </div>
+                {/* Main Content */}
+                <div className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 pt-0 pb-8 space-y-4 sm:space-y-5">
 
-                      <Badge variant="primary" className="text-xs px-3.5 py-1.5 uppercase tracking-wider shadow-2xs shrink-0">
-                        {selectedArea === 'bibir' ? '💋 LIPS MATCH REPORT' : '✨ FADE & SHADE REPORT'}
-                      </Badge>
-                    </div>
+                  {/* Page Title with Animated Entrance */}
+                  <motion.div
+                    initial={{ opacity: 0, y: -16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, ease: 'easeOut' }}
+                    className="text-center space-y-0.5"
+                  >
+                    <p className="text-sm font-medium tracking-[-0.05em] text-[#545459]/70">AI Analysis Complete ✨</p>
+                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight">
+                      Hi, <span className="text-[#F6559C]">{customerName || 'Beauty'}</span> — Here's Your Result
+                    </h2>
+                  </motion.div>
 
-                    {!scanResult ? (
-                      <div className="p-6 bg-zinc-50 border border-zinc-100 rounded-2xl flex items-center gap-3 text-xs sm:text-sm text-zinc-600 font-semibold">
-                        <Loader2 className="w-4 h-4 animate-spin text-[#FF73B6]" />
-                        <span>{isAnalyzing ? 'AI masih menyelesaikan analisis wajah Anda...' : 'Hasil analisis tidak tersedia. Silakan scan ulang.'}</span>
-                      </div>
-                    ) : (
-                      <>
-                        {/* Standardized Diagnostic Metrics */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                          <div className="p-3.5 bg-pink-50/50 rounded-2xl border border-pink-100/80">
-                            <span className="text-[10px] text-zinc-500 font-bold block uppercase tracking-wider">🎨 Personal Color</span>
-                            <span className="text-base font-black text-pink-700">{scanResult.personalColor}</span>
-                          </div>
-                          <div className="p-3.5 bg-blue-50/50 rounded-2xl border border-blue-100/80">
-                            <span className="text-[10px] text-zinc-500 font-bold block uppercase tracking-wider">🌡️ Undertone</span>
-                            <span className="text-base font-black text-blue-700">{scanResult.undertone}</span>
-                          </div>
-                          <div className="p-3.5 bg-amber-50/50 rounded-2xl border border-amber-100/80">
-                            <span className="text-[10px] text-zinc-500 font-bold block uppercase tracking-wider">🧑 Skin Tone</span>
-                            <span className="text-base font-black text-amber-800">{scanResult.skinTone}</span>
-                          </div>
-                          <div className="p-3.5 bg-purple-50/50 rounded-2xl border border-purple-100/80">
-                            <span className="text-[10px] text-zinc-500 font-bold block uppercase tracking-wider">😊 Face Shape</span>
-                            <span className="text-base font-black text-purple-700">{scanResult.faceShape}</span>
-                          </div>
-                        </div>
+                  {/* Two-column layout with tight gap */}
+                  <div className="grid grid-cols-1 lg:grid-cols-[378px_1fr] gap-6 items-start">
 
-                        {/* Best Color Palette */}
-                        {scanResult.bestColorPalette.length > 0 && (
-                          <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl space-y-2.5">
-                            <span className="text-xs font-extrabold text-zinc-900 block flex items-center gap-1.5">
-                              🎨 Best Color Palette
-                            </span>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                              {scanResult.bestColorPalette.map((swatch) => (
-                                <div key={swatch.name} className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-zinc-200/80 text-xs font-bold text-zinc-800">
-                                  <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: swatch.colorHex }}></span>
-                                  <span>{swatch.name}</span>
-                                </div>
-                              ))}
+                    {/* LEFT COLUMN: Selfie Card + Action Buttons with Animated Entrance */}
+                    <motion.div
+                      initial={{ opacity: 0, x: -24, scale: 0.96 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      transition={{ duration: 0.6, delay: 0.15, ease: [0.23, 1, 0.32, 1] }}
+                      className="lg:sticky lg:top-16 flex flex-col items-center space-y-3 shrink-0"
+                    >
+                      <div className="relative w-full max-w-[378px] h-[378px] rounded-[32px] overflow-hidden shadow-sm">
+                        {capturedImage ? (
+                          <img
+                            src={capturedImage}
+                            alt="Selfie Scan"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center bg-white/40">
+                            <div className="text-center space-y-2 text-[#545459]/50">
+                              <User className="w-12 h-12 mx-auto" />
+                              <p className="text-sm font-medium">No photo captured</p>
                             </div>
                           </div>
                         )}
-
-                        {/* Analysis Summary Text */}
-                        <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-xs sm:text-sm text-zinc-700 leading-relaxed font-medium">
-                          <p>
-                            Berdasarkan pemindaian AI, kulit <strong className="text-zinc-950 font-bold">{customerName || 'Anda'}</strong> tergolong <strong className="text-pink-600 font-bold">{scanResult.personalColor} {scanResult.undertone}</strong> dengan kontur wajah {scanResult.faceShape}. {scanResult.matchSummary || `Rekomendasi produk telah disesuaikan dengan skin tone ${scanResult.skinTone} Anda.`}
+                        {/* Bottom gradient overlay */}
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-5 z-10">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-[#F6559C] animate-pulse" />
+                            <p className="text-white text-xs font-medium">Analyzed in under 10 seconds</p>
+                          </div>
+                          <p className="text-white/70 text-[11px] mt-0.5">
+                            {selectedArea === 'bibir' ? '💋 Lips Focus Analysis' : '✨ Base & Skin Analysis'}
                           </p>
                         </div>
-                      </>
-                    )}
+                      </div>
 
-                  </Card>
+                      {/* Scan Ulang & Share Buttons (Positioned right near the photo) */}
+                      <div className="flex items-center gap-2.5 w-full max-w-[378px]">
+                        <button
+                          onClick={handleReset}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full bg-white/50 hover:bg-white/80 backdrop-blur-md border border-white/80 text-[#545459] text-xs font-medium shadow-xs transition-all cursor-pointer hover:scale-105 active:scale-95"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Scan Ulang</span>
+                        </button>
+                        <button
+                          onClick={triggerShare}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full bg-white/50 hover:bg-white/80 backdrop-blur-md border border-white/80 text-[#545459] text-xs font-medium shadow-xs transition-all cursor-pointer hover:scale-105 active:scale-95"
+                        >
+                          <Share2 className="w-3.5 h-3.5" />
+                          <span>Share</span>
+                        </button>
+                      </div>
+                    </motion.div>
+
+                    {/* RIGHT COLUMN: AI Diagnostic Stats with Staggered Animations */}
+                    <div className="space-y-4 min-w-0">
+                      {!scanResult ? (
+                        <div className="h-full flex items-center justify-center p-8 rounded-[28px] bg-white/50 backdrop-blur-md border border-white/80 shadow-xs">
+                          <div className="text-center space-y-3">
+                            <Loader2 className="w-8 h-8 animate-spin text-[#F6559C] mx-auto" />
+                            <p className="text-sm font-medium text-[#545459]">
+                              {isAnalyzing ? 'AI sedang menganalisis wajah Anda...' : 'Hasil tidak tersedia. Silakan scan ulang.'}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {/* 1. Overall Skin Score (Animated Gauge & Counter with 1.2s delay) */}
+                          {(() => {
+                            const score = animatedScore || (scanResult ? Math.min(100, Math.max(0, Math.round(scanResult.confidence))) : 87);
+                            const pct = score / 100;
+                            const radius = 62;
+                            const cx = 85;
+                            const cy = 82;
+                            const arcLength = Math.PI * radius; // ~194.78
+                            const dashOffset = arcLength * (1 - pct);
+                            const knobX = cx - radius * Math.cos(pct * Math.PI);
+                            const knobY = cy - radius * Math.sin(pct * Math.PI);
+                            const targetVal = scanResult ? Math.round(scanResult.confidence) : 87;
+                            const topPercentile = Math.max(5, 100 - targetVal);
+
+                            return (
+                              <motion.div
+                                initial={{ opacity: 0, y: 22, scale: 0.97 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                transition={{ duration: 0.6, delay: 1.2, ease: [0.23, 1, 0.32, 1] }}
+                                className="p-6 sm:p-7 rounded-[26px] bg-white/50 backdrop-blur-md border border-white/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-6"
+                              >
+                                {/* Left Text & Big Score */}
+                                <div className="space-y-1.5 text-left w-full sm:w-auto">
+                                  <div className="flex items-center gap-1.5 text-slate-800 font-bold text-sm tracking-tight">
+                                    <span>Your Overall Skin Score</span>
+                                    <Info className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600 transition-colors" />
+                                  </div>
+
+                                  <div className="flex items-baseline gap-1 my-0.5">
+                                    <span className="text-5xl sm:text-6xl font-black text-[#F6559C] tracking-tight font-['Satoshi'] leading-none">
+                                      {score}
+                                    </span>
+                                    <span className="text-lg sm:text-xl font-bold text-slate-400">
+                                      /100
+                                    </span>
+                                  </div>
+
+                                  <p className="text-xs sm:text-sm text-slate-500 font-medium">
+                                    Great! Your skin is in good condition.
+                                  </p>
+                                </div>
+
+                                {/* Right Semi-Circular Gauge & Ranking Badge */}
+                                <div className="relative flex items-center justify-center shrink-0 w-[180px] h-[105px]">
+                                  <svg className="w-full h-full overflow-visible" viewBox="0 0 170 95">
+                                    <defs>
+                                      <linearGradient id="skinScoreGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" stopColor="#F6559C" />
+                                        <stop offset="100%" stopColor="#FF6EA7" />
+                                      </linearGradient>
+                                    </defs>
+
+                                    {/* Background Arc */}
+                                    <path
+                                      d="M 23 82 A 62 62 0 0 1 147 82"
+                                      fill="none"
+                                      stroke="#F1F5F9"
+                                      strokeWidth="11"
+                                      strokeLinecap="round"
+                                    />
+
+                                    {/* Foreground Progress Arc */}
+                                    <path
+                                      d="M 23 82 A 62 62 0 0 1 147 82"
+                                      fill="none"
+                                      stroke="url(#skinScoreGradient)"
+                                      strokeWidth="11"
+                                      strokeLinecap="round"
+                                      strokeDasharray={arcLength}
+                                      strokeDashoffset={dashOffset}
+                                      className="transition-all duration-300 ease-out"
+                                    />
+
+                                    {/* Glowing Indicator Knob */}
+                                    <circle
+                                      cx={knobX}
+                                      cy={knobY}
+                                      r="8"
+                                      fill="#FFA7CC"
+                                      stroke="#FFFFFF"
+                                      strokeWidth="2.5"
+                                      className="drop-shadow-xs transition-all duration-300 ease-out"
+                                    />
+                                  </svg>
+
+                                  {/* Center Content (Heart Badge + Ranking Text) */}
+                                  <div className="absolute inset-x-0 bottom-1 flex flex-col items-center justify-center text-center pointer-events-none">
+                                    <div className="w-6 h-6 rounded-full bg-pink-50 border border-pink-100 flex items-center justify-center text-[#F6559C] shadow-2xs">
+                                      <Heart className="w-3 h-3 fill-[#F6559C] text-[#F6559C]" />
+                                    </div>
+                                    <p className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight mt-0.5 leading-none">
+                                      Top {topPercentile}%
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 font-medium leading-tight">
+                                      of users
+                                    </p>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            );
+                          })()}
+
+                          {/* 2. 4 Diagnostic Stat Cards with Staggered Entrance */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {[
+                              { label: 'Personal Color', value: scanResult.personalColor, emoji: '🎨' },
+                              { label: 'Undertone', value: scanResult.undertone, emoji: '🌡️' },
+                              { label: 'Skin Tone', value: scanResult.skinTone, emoji: '🧑' },
+                              { label: 'Face Shape', value: scanResult.faceShape, emoji: '😊' },
+                            ].map((stat, idx) => (
+                              <motion.div
+                                key={stat.label}
+                                initial={{ opacity: 0, y: 16 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.5, delay: 1.45 + idx * 0.12, ease: 'easeOut' }}
+                                className="p-4 rounded-[22px] bg-white/50 backdrop-blur-md border border-white/80 shadow-xs flex flex-col justify-between hover:scale-[1.02] transition-transform duration-200"
+                              >
+                                <p className="text-[10px] font-semibold text-[#545459]/60 uppercase tracking-wider mb-1.5">
+                                  {stat.emoji} {stat.label}
+                                </p>
+                                <p className="text-base sm:text-lg font-bold text-[#18181B] font-['Satoshi'] tracking-[-0.03em]">
+                                  {stat.value}
+                                </p>
+                              </motion.div>
+                            ))}
+                          </div>
+
+                          {/* 3. Color Palette Card with Animated Entrance */}
+                          {scanResult.bestColorPalette.length > 0 && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 16 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.5, delay: 1.95, ease: 'easeOut' }}
+                              className="p-5 rounded-[22px] bg-white/50 backdrop-blur-md border border-white/80 shadow-xs space-y-3"
+                            >
+                              <p className="text-xs font-bold text-[#545459] flex items-center gap-1.5 uppercase tracking-wider">
+                                🎨 <span>Best Color Palette for You</span>
+                              </p>
+                              <div className="flex flex-wrap gap-2.5">
+                                {scanResult.bestColorPalette.map((swatch) => (
+                                  <div
+                                    key={swatch.name}
+                                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/70 border border-white/80 text-xs font-medium text-[#545459] shadow-2xs"
+                                  >
+                                    <span
+                                      className="w-3.5 h-3.5 rounded-full shrink-0 shadow-2xs"
+                                      style={{ backgroundColor: swatch.colorHex }}
+                                    />
+                                    <span>{swatch.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+
+                          {/* 4. AI Summary Text with Animated Entrance */}
+                          <motion.div
+                            initial={{ opacity: 0, y: 16 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.5, delay: 2.15, ease: 'easeOut' }}
+                            className="p-5 rounded-[22px] bg-white/50 backdrop-blur-md border border-white/80 shadow-xs"
+                          >
+                            <p className="text-xs sm:text-sm text-[#545459] leading-relaxed">
+                              Kulit <strong className="text-[#18181B]">{customerName || 'Anda'}</strong> tergolong <strong className="text-[#F6559C]">{scanResult.personalColor} {scanResult.undertone}</strong> dengan kontur wajah {scanResult.faceShape}. {scanResult.matchSummary || `Rekomendasi produk telah disesuaikan dengan skin tone ${scanResult.skinTone} Anda.`}
+                            </p>
+                          </motion.div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
                 </div>
-
               </div>
-
-              {/* Step 4 CTA Actions Bar */}
-              <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-zinc-200">
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <Button
-                    onClick={handleReset}
-                    variant="outline"
-                    size="md"
-                    icon={<RotateCcw className="w-4 h-4" />}
-                    className="bg-white text-xs font-bold py-3"
-                  >
-                    Scan Ulang
-                  </Button>
-                  <Button
-                    onClick={triggerShare}
-                    variant="dark"
-                    size="md"
-                    icon={<Share2 className="w-4 h-4" />}
-                    className="text-xs font-bold py-3"
-                  >
-                    Bagikan Hasil
-                  </Button>
-                </div>
-
-                <button
-                  onClick={() => setCurrentStep('recommendations')}
-                  className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-[#FF73B6] hover:bg-[#e05593] text-white font-extrabold text-sm shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
-                >
-                  <span>Lihat Rekomendasi Produk Fit →</span>
-                  <ArrowRight className="w-5 h-5" />
-                </button>
-              </div>
-
             </motion.div>
           )}
 

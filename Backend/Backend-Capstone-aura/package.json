@@ -27,6 +27,7 @@
     "scrape:soco": "tsx scripts/scrape-soco-makeup.ts",
     "import:dataset": "tsx scripts/import-dataset.ts",
     "seed:demo-affiliator": "tsx prisma/seed-demo-affiliator.ts",
+    "backfill:composition": "tsx scripts/backfill-composition.ts",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down"
   },

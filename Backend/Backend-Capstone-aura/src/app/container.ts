@@ -1,5 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
 import { AiClient, type IAiClient } from '../shared/services/ai-client.js';
+import {
+  IngredientLookupClient,
+  type IIngredientLookupClient,
+} from '../shared/services/ingredient-lookup-client.js';
 import { AuthRepository } from '../modules/auth/repositories/auth.repository.js';
 import { UserRepository } from '../modules/user/repositories/user.repository.js';
 import { ProfileRepository } from '../modules/profile/repositories/profile.repository.js';
@@ -31,6 +35,7 @@ export interface AppContainer {
   historyRepository: HistoryRepository;
   ruleEngine: RecommendationRuleEngine;
   aiClient: IAiClient;
+  ingredientLookupClient: IIngredientLookupClient;
   recommendationService: RecommendationService;
   affiliatorRepository: AffiliatorRepository;
   aiPageRepository: AIPageRepository;
@@ -65,6 +70,7 @@ export function createContainer(db: PrismaClient, aiClient?: IAiClient): AppCont
     historyRepository: new HistoryRepository(db),
     ruleEngine,
     aiClient: aiClient ?? new AiClient(),
+    ingredientLookupClient: new IngredientLookupClient(),
     recommendationService,
     affiliatorRepository: new AffiliatorRepository(db),
     aiPageRepository: new AIPageRepository(db),

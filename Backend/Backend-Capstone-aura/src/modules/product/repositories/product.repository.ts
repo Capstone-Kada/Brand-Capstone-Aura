@@ -58,6 +58,9 @@ type ProductRow = {
   matchScoreWeight: number;
   sourceUrl: string | null;
   affiliateUrl: string | null;
+  composition: string[];
+  compositionStatus: string;
+  compositionUpdatedAt: Date | null;
   ingredients: Array<{ ingredient: Parameters<typeof mapMakeupType>[0] }>;
 };
 
@@ -94,6 +97,9 @@ function mapProduct(row: ProductRow): ProductDto {
     sourceUrl: row.sourceUrl,
     affiliateUrl: row.affiliateUrl,
     makeupTypes: row.ingredients.map((link) => mapMakeupType(link.ingredient)),
+    composition: row.composition,
+    compositionStatus: row.compositionStatus,
+    compositionUpdatedAt: row.compositionUpdatedAt,
   };
 }
 
@@ -299,5 +305,19 @@ export class ProductRepository implements IProductRepository {
 
   async softDelete(id: string): Promise<void> {
     await this.db.product.update({ where: { id }, data: { isActive: false } });
+  }
+
+  async updateCompositionResult(
+    id: string,
+    result: { composition: string[]; status: 'completed' | 'failed' },
+  ): Promise<void> {
+    await this.db.product.update({
+      where: { id },
+      data: {
+        composition: result.composition,
+        compositionStatus: result.status,
+        compositionUpdatedAt: new Date(),
+      },
+    });
   }
 }

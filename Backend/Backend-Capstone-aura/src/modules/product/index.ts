@@ -6,13 +6,15 @@ import { asyncHandler } from '../../shared/utils/async-handler.js';
 import { ProductController, createProductSchema, updateProductSchema } from './controllers/product.controller.js';
 import type { IProductRepository } from './interfaces/product.repository.interface.js';
 import { ProductService } from './services/product.service.js';
+import type { IIngredientLookupClient } from '../../shared/services/ingredient-lookup-client.js';
 
 export interface ProductModuleDeps {
   productRepository: IProductRepository;
+  ingredientLookupClient: IIngredientLookupClient;
 }
 
 export function createProductModule(deps: ProductModuleDeps): Router {
-  const service = new ProductService(deps.productRepository);
+  const service = new ProductService(deps.productRepository, deps.ingredientLookupClient);
   const controller = new ProductController(service);
   const router = Router();
 

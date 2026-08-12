@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Michroma&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Michroma&family=Outfit:wght@300..900&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap');
 @import url('https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400,300&display=swap');
 @import "tailwindcss";
 
@@ -6,6 +6,7 @@
   --font-sans: 'Satoshi', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-satoshi: 'Satoshi', sans-serif;
   --font-michroma: 'Michroma', sans-serif;
+  --font-outfit: 'Outfit', sans-serif;
 }
 
 /* Custom font style for aura logo: Michroma Medium (500) with -3% letter spacing */
@@ -111,4 +112,3 @@
 .animate-ticker:hover {
   animation-play-state: paused;
 }
-

@@ -58,6 +58,9 @@ export interface RecommendationWithRelations extends Recommendation {
       matchScoreWeight: number;
       sourceUrl: string | null;
       affiliateUrl: string | null;
+      composition: string[];
+      compositionStatus: string;
+      compositionUpdatedAt: Date | null;
       ingredients: Array<{
         ingredient: {
           id: string;

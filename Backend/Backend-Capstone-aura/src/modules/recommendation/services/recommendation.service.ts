@@ -52,6 +52,9 @@ function mapLinkedProduct(link: {
     matchScoreWeight: number;
     sourceUrl: string | null;
     affiliateUrl: string | null;
+    composition: string[];
+    compositionStatus: string;
+    compositionUpdatedAt: Date | null;
     ingredients: Array<{
       ingredient: {
         id: string;
@@ -96,6 +99,9 @@ function mapLinkedProduct(link: {
     matchScoreWeight: p.matchScoreWeight,
     sourceUrl: p.sourceUrl,
     affiliateUrl: p.affiliateUrl,
+    composition: p.composition,
+    compositionStatus: p.compositionStatus,
+    compositionUpdatedAt: p.compositionUpdatedAt,
     makeupTypes: p.ingredients.map((pi) => ({
       id: pi.ingredient.id,
       name: pi.ingredient.name,

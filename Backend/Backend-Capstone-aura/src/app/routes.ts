@@ -23,7 +23,10 @@ export function createApiRouter(container: AppContainer): Router {
   router.use('/profile', createProfileModule({ profileRepository: container.profileRepository }));
   router.use(
     '/products',
-    createProductModule({ productRepository: container.productRepository }),
+    createProductModule({
+      productRepository: container.productRepository,
+      ingredientLookupClient: container.ingredientLookupClient,
+    }),
   );
   router.use(
     '/ingredients',

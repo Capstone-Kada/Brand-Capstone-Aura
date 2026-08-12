@@ -12,6 +12,16 @@ export default defineConfig(() => {
       },
     },
     server: {
+      // Keep browser requests on the same origin during development. Vite
+      // forwards them to the local Express API, which also works when the UI
+      // is opened through a LAN address rather than localhost.
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
+        },
+      },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',

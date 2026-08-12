@@ -41,6 +41,9 @@ export interface ProductDto {
   sourceUrl: string | null;
   affiliateUrl: string | null;
   makeupTypes: MakeupTypeDto[];
+  composition: string[];
+  compositionStatus: string;
+  compositionUpdatedAt: Date | null;
 }
 
 export interface ProductListFilter {
@@ -88,6 +91,10 @@ export interface IProductRepository {
   create(data: CreateProductInput): Promise<ProductDto>;
   update(id: string, data: UpdateProductInput): Promise<ProductDto>;
   softDelete(id: string): Promise<void>;
+  updateCompositionResult(
+    id: string,
+    result: { composition: string[]; status: 'completed' | 'failed' },
+  ): Promise<void>;
 }
 
 export interface IIngredientRepository {

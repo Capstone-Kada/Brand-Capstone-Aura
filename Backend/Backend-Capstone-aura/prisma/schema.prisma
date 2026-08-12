@@ -349,6 +349,12 @@ model Product {
   /// Affiliate / marketplace checkout URL (PRD Feature 5)
   affiliateUrl  String?  @map("affiliate_url")
   isActive      Boolean  @default(true) @map("is_active")
+  /// AI-inferred INCI / active-ingredient list. Distinct from the `ingredients` relation below,
+  /// which is a makeup-type taxonomy (Foundation, Blush, ...), not real chemical composition.
+  composition           String[] @default([]) @map("composition")
+  /// pending | completed | failed
+  compositionStatus     String   @default("pending") @map("composition_status")
+  compositionUpdatedAt  DateTime? @map("composition_updated_at")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
