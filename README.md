@@ -244,9 +244,9 @@ Capstone/
 
 Proyek ini dikembangkan sebagai **Capstone Project** oleh tim **KADA**.
 
-Bita Azizy Hamida
-Nur Alief Maulana
-Muhamad Rifki Ardi Priadi
+1. Bita Azizy Hamida
+2. Nur Alief Maulana
+3. Muhamad Rifki Ardi Priadi
 
 ## 📄 Lisensi
 
@@ -254,4 +254,4 @@ Proyek ini dibuat untuk keperluan akademik / capstone. Seluruh hak cipta milik t
 
 ## 📄 Link Github Repository
 
-https://github.com/Capstone-Kada/Capstone-BRAND.git
+https://github.com/Capstone-Kada/Brand-Capstone-Aura.git
