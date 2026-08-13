@@ -18,6 +18,13 @@ export const appConfig = {
     /** True only when both Supabase credentials are present (env.ts enforces they're set together). */
     isConfigured: Boolean(config.SUPABASE_URL && config.SUPABASE_SERVICE_ROLE_KEY),
   },
+  frontendUrl: config.FRONTEND_URL.replace(/\/$/, ''),
+  email: {
+    functionUrl: config.EMAIL_FUNCTION_URL,
+    functionSecret: config.EMAIL_FUNCTION_SECRET,
+    /** True only when both are present (env.ts enforces they're set together). */
+    isConfigured: Boolean(config.EMAIL_FUNCTION_URL && config.EMAIL_FUNCTION_SECRET),
+  },
   jwt: {
     secret: config.JWT_SECRET,
     accessExpiresIn: config.JWT_ACCESS_EXPIRES_IN,

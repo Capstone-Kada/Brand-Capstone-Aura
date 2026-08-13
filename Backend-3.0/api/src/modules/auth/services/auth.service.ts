@@ -3,7 +3,12 @@ import * as speakeasy from 'speakeasy';
 import * as qrcode from 'qrcode';
 import { OAuth2Client } from 'google-auth-library';
 import { appConfig } from '../../../config/index.js';
-import { ConflictError, UnauthorizedError, ValidationError } from '../../../shared/errors/app-error.js';
+import {
+  ConflictError,
+  EmailNotVerifiedError,
+  UnauthorizedError,
+  ValidationError,
+} from '../../../shared/errors/app-error.js';
 import { generateSecureToken, sha256, slugify } from '../../../shared/utils/crypto.js';
 import {
   getRefreshExpiryDate,
@@ -14,10 +19,12 @@ import {
 import { comparePassword, hashPassword } from '../../../shared/utils/password.js';
 import { logger } from '../../../shared/utils/logger.js';
 import type { IAuthRepository } from '../interfaces/auth.repository.interface.js';
+import type { IEmailService } from '../../../shared/services/email.service.js';
 import type {
   AuthResponseDto,
   AuthTokensDto,
   ForgotPasswordResponseDto,
+  MessageResponseDto,
 } from '../dto/auth.dto.js';
 import type {
   ForgotPasswordInput,
@@ -28,10 +35,52 @@ import type {
   ResetPasswordInput,
 } from '../validators/auth.validator.js';
 
+/** Minimum wait between verification emails for the same account — keep in sync with the frontend's hardcoded copy in AuthPages.tsx. */
+const RESEND_COOLDOWN_MS = 10 * 60 * 1000;
+
 export class AuthService {
   private googleClient?: OAuth2Client;
 
-  constructor(private readonly authRepository: IAuthRepository) {}
+  constructor(
+    private readonly authRepository: IAuthRepository,
+    private readonly emailService: IEmailService,
+  ) {}
+
+  private async issueEmailVerification(userId: string, email: string): Promise<void> {
+    const rawToken = generateSecureToken();
+    await this.authRepository.createEmailVerificationToken({
+      userId,
+      tokenHash: sha256(rawToken),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+
+    const verifyUrl = `${appConfig.frontendUrl}/verify-email?token=${rawToken}`;
+    await this.emailService.sendVerificationEmail(email, verifyUrl);
+  }
+
+  /**
+   * Enforces the resend cooldown, then issues+sends a new verification email
+   * if allowed. Returns how many seconds remain either way, so the caller
+   * (and ultimately the frontend) always knows when the button unlocks next.
+   */
+  private async issueEmailVerificationWithCooldown(
+    userId: string,
+    email: string,
+  ): Promise<{ sent: boolean; retryAfterSeconds: number }> {
+    const latest = await this.authRepository.findLatestEmailVerificationForUser(userId);
+    if (latest) {
+      const elapsedMs = Date.now() - latest.createdAt.getTime();
+      if (elapsedMs < RESEND_COOLDOWN_MS) {
+        return {
+          sent: false,
+          retryAfterSeconds: Math.ceil((RESEND_COOLDOWN_MS - elapsedMs) / 1000),
+        };
+      }
+    }
+
+    await this.issueEmailVerification(userId, email);
+    return { sent: true, retryAfterSeconds: Math.ceil(RESEND_COOLDOWN_MS / 1000) };
+  }
 
   async register(input: RegisterInput): Promise<AuthResponseDto> {
     const existing = await this.authRepository.findByEmail(input.email);
@@ -54,12 +103,13 @@ export class AuthService {
         : undefined,
     });
 
-    const tokens = await this.issueTokens(user.id, user.email, user.role);
-    logger.info('User registered', { userId: user.id });
+    const { retryAfterSeconds } = await this.issueEmailVerificationWithCooldown(user.id, user.email);
+    logger.info('User registered, verification email sent', { userId: user.id });
 
     return {
-      user: { id: user.id, email: user.email, role: user.role },
-      tokens,
+      requiresEmailVerification: true,
+      email: user.email,
+      retryAfterSeconds,
     };
   }
 
@@ -72,6 +122,10 @@ export class AuthService {
     const valid = await comparePassword(input.password, user.passwordHash);
     if (!valid) {
       throw new UnauthorizedError('Invalid email or password');
+    }
+
+    if (!user.isEmailVerified) {
+      throw new EmailNotVerifiedError();
     }
 
     if (user.isTwoFactorEnabled) {
@@ -126,6 +180,7 @@ export class AuthService {
         passwordHash,
         name: payload.name,
         role: 'AFFILIATOR',
+        isEmailVerified: true,
         affiliator: {
           handle: `${slugify(payload.email.split('@')[0] ?? 'affiliator')}-${randomUUID().slice(0, 6)}`,
           apiKey: `aura_live_${generateSecureToken(24)}`,
@@ -220,6 +275,39 @@ export class AuthService {
     logger.info('Password reset completed', { userId: stored.userId });
   }
 
+  async verifyEmail(token: string): Promise<void> {
+    const stored = await this.authRepository.findEmailVerificationByHash(sha256(token));
+    if (!stored || stored.usedAt || stored.expiresAt < new Date()) {
+      throw new ValidationError('Invalid or expired verification link');
+    }
+
+    await this.authRepository.updateUser(stored.userId, {
+      isEmailVerified: true,
+      emailVerifiedAt: new Date(),
+    });
+    await this.authRepository.markEmailVerificationUsed(stored.id);
+    logger.info('Email verified', { userId: stored.userId });
+  }
+
+  async resendVerificationEmail(email: string): Promise<MessageResponseDto> {
+    // Message text stays identical across every branch below — only
+    // `retryAfterSeconds` varies — so the response never confirms whether
+    // the address is registered (same anti-enumeration intent as forgotPassword).
+    const message = 'If that email exists and is unverified, a new verification link has been sent';
+    const user = await this.authRepository.findByEmail(email);
+
+    if (!user || user.isEmailVerified) {
+      return { message, retryAfterSeconds: Math.ceil(RESEND_COOLDOWN_MS / 1000) };
+    }
+
+    const { sent, retryAfterSeconds } = await this.issueEmailVerificationWithCooldown(user.id, user.email);
+    if (sent) {
+      logger.info('Verification email resent', { userId: user.id });
+    }
+
+    return { message, retryAfterSeconds };
+  }
+
   private async issueTokens(
     userId: string,
     email: string,
@@ -249,6 +337,9 @@ export class AuthService {
   async generate2FA(userId: string, email: string): Promise<{ secret: string; qrCodeDataUrl: string }> {
     const user = await this.authRepository.findById(userId);
     if (!user) throw new UnauthorizedError('User not found');
+    if (user.isTwoFactorEnabled) {
+      throw new ConflictError('2FA is already enabled. Disable it before setting up a new device.');
+    }
 
     const secret = speakeasy.generateSecret({ name: `KADA-Capstone (${email})` });
     const qrCodeDataUrl = await qrcode.toDataURL(secret.otpauth_url!);
@@ -266,6 +357,7 @@ export class AuthService {
       secret: user.twoFactorSecret,
       encoding: 'base32',
       token,
+      window: 1,
     });
     if (!isValid) throw new ValidationError('Invalid 2FA code');
 
@@ -282,6 +374,7 @@ export class AuthService {
       secret: user.twoFactorSecret,
       encoding: 'base32',
       token,
+      window: 1,
     });
     if (!isValid) throw new UnauthorizedError('Invalid 2FA code');
 

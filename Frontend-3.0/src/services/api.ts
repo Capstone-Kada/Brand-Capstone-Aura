@@ -121,6 +121,9 @@ interface AuthResponseDto {
   tokens?: { accessToken: string; refreshToken: string; expiresIn: string; tokenType: string };
   requires2FA?: boolean;
   userId?: string;
+  requiresEmailVerification?: boolean;
+  email?: string;
+  retryAfterSeconds?: number;
 }
 
 interface AffiliatorProfileDto {
@@ -452,6 +455,10 @@ export const api = {
       return result;
     },
     disable2FA: (): Promise<void> => unwrap(http.post('/auth/2fa/disable')),
+    verifyEmail: (token: string): Promise<{ message: string }> =>
+      unwrap(http.post('/auth/verify-email', { token })),
+    resendVerification: (email: string): Promise<{ message: string; retryAfterSeconds?: number }> =>
+      unwrap(http.post('/auth/resend-verification', { email })),
   },
 
   affiliator: {

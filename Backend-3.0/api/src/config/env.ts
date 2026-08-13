@@ -21,6 +21,15 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   SUPABASE_STORAGE_BUCKET: z.string().min(1).default('aura-scans'),
+  // Public URL of the deployed frontend — used to build links inside
+  // transactional emails (e.g. /verify-email?token=...).
+  FRONTEND_URL: z.string().url().default('http://localhost:5173'),
+  // Supabase Edge Function that actually sends transactional email (see
+  // supabase/functions/send-email). Only required for email verification —
+  // omit both to fall back to logging the verification link instead of
+  // emailing it (dev/CI only).
+  EMAIL_FUNCTION_URL: z.string().url().optional(),
+  EMAIL_FUNCTION_SECRET: z.string().min(1).optional(),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
@@ -57,6 +66,13 @@ const envSchema = z.object({
     message:
       'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set together (or both left empty to use local disk storage)',
     path: ['SUPABASE_SERVICE_ROLE_KEY'],
+  },
+).refine(
+  (env) => Boolean(env.EMAIL_FUNCTION_URL) === Boolean(env.EMAIL_FUNCTION_SECRET),
+  {
+    message:
+      'EMAIL_FUNCTION_URL and EMAIL_FUNCTION_SECRET must be set together (or both left empty to log verification links instead of emailing them)',
+    path: ['EMAIL_FUNCTION_SECRET'],
   },
 );
 

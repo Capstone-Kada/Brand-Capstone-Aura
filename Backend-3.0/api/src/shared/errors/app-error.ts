@@ -56,6 +56,15 @@ export class ForbiddenError extends AppError {
   }
 }
 
+export class EmailNotVerifiedError extends AppError {
+  constructor(message = 'Please verify your email before logging in') {
+    super(message, {
+      code: ERROR_CODES.EMAIL_NOT_VERIFIED,
+      statusCode: HTTP_STATUS.FORBIDDEN,
+    });
+  }
+}
+
 export class NotFoundError extends AppError {
   constructor(message = 'Resource not found') {
     super(message, {

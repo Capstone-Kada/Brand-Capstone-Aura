@@ -9,7 +9,9 @@ import type {
   LogoutInput,
   RefreshTokenInput,
   RegisterInput,
+  ResendVerificationInput,
   ResetPasswordInput,
+  VerifyEmailInput,
   Enable2FAInput,
   Verify2FAInput,
 } from '../validators/auth.validator.js';
@@ -54,6 +56,18 @@ export class AuthController {
   resetPassword = async (req: Request, res: Response): Promise<void> => {
     await this.authService.resetPassword(req.body as ResetPasswordInput);
     sendSuccess(res, { message: 'Password updated' });
+  };
+
+  verifyEmail = async (req: Request, res: Response): Promise<void> => {
+    const { token } = req.body as VerifyEmailInput;
+    await this.authService.verifyEmail(token);
+    sendSuccess(res, { message: 'Email verified successfully' });
+  };
+
+  resendVerification = async (req: Request, res: Response): Promise<void> => {
+    const { email } = req.body as ResendVerificationInput;
+    const result = await this.authService.resendVerificationEmail(email);
+    sendSuccess(res, result);
   };
 
   generate2FA = async (req: Request, res: Response): Promise<void> => {

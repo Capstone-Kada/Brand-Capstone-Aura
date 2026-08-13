@@ -47,6 +47,14 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong.';
 }
 
+function errorCode(err: unknown): string | undefined {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const response = (err as { response?: { data?: { error?: { code?: string } } } }).response;
+    return response?.data?.error?.code;
+  }
+  return undefined;
+}
+
 const PENDING_PRODUCTS_STORAGE_KEY = 'aura_pending_products';
 
 const DEFAULT_PENDING_PRODUCTS: Product[] = [
@@ -95,12 +103,18 @@ const saveStoredCustomProducts = (items: Product[]) => {
 export function useBeautyStore() {
   const [currentRoute, setCurrentRoute] = useState<RouteView>(() => {
     const path = window.location.pathname.replace('/', '');
+    if (path === 'verify-email') {
+      return 'verify-email';
+    }
     // If the path looks like a username/slug (not empty), default to public-recommendation
     if (path && path.length > 2) {
       return 'public-recommendation';
     }
     return 'landing';
   });
+  const [emailVerifyToken] = useState<string>(
+    () => new URLSearchParams(window.location.search).get('token') || '',
+  );
   const [user, setUser] = useState<UserProfile | null>(null);
   const [affiliators, setAffiliators] = useState<AffiliatorAccount[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -234,7 +248,10 @@ export function useBeautyStore() {
   }, [addToast]);
 
   const loginAs = useCallback(
-    async (email: string, password: string): Promise<{ requires2FA?: boolean; userId?: string } | void> => {
+    async (
+      email: string,
+      password: string,
+    ): Promise<{ requires2FA?: boolean; userId?: string; requiresEmailVerification?: boolean } | void> => {
       setIsLoadingWorkspace(true);
       try {
         const response = await api.auth.login(email, password);
@@ -253,6 +270,9 @@ export function useBeautyStore() {
           addToast('Affiliator Signed In', 'Welcome back to your creator dashboard.', 'success');
         }
       } catch (err) {
+        if (errorCode(err) === 'EMAIL_NOT_VERIFIED') {
+          return { requiresEmailVerification: true };
+        }
         addToast('Sign In Failed', errorMessage(err), 'error');
         throw err;
       } finally {
@@ -342,20 +362,57 @@ export function useBeautyStore() {
   );
 
   const registerAffiliator = useCallback(
-    async (email: string, password: string, name: string) => {
+    async (
+      email: string,
+      password: string,
+      name: string,
+    ): Promise<{ requiresEmailVerification?: boolean; email?: string; retryAfterSeconds?: number } | void> => {
       setIsLoadingWorkspace(true);
       try {
-        await api.auth.register({ email, password, name, accountType: 'AFFILIATOR' });
-        await loadAffiliatorWorkspace();
-        setCurrentRoute('dashboard');
-        addToast('Account Created', 'Your affiliator dashboard is ready — pending admin approval.', 'success');
+        const result = await api.auth.register({ email, password, name, accountType: 'AFFILIATOR' });
+        if (result.requiresEmailVerification) {
+          addToast('Verify Your Email', 'We sent a verification link to your inbox.', 'success');
+          return {
+            requiresEmailVerification: true,
+            email: result.email ?? email,
+            retryAfterSeconds: result.retryAfterSeconds,
+          };
+        }
       } catch (err) {
         addToast('Registration Failed', errorMessage(err), 'error');
+        throw err;
       } finally {
         setIsLoadingWorkspace(false);
       }
     },
-    [addToast, loadAffiliatorWorkspace],
+    [addToast],
+  );
+
+  const verifyEmailToken = useCallback(
+    async (token: string): Promise<boolean> => {
+      try {
+        await api.auth.verifyEmail(token);
+        addToast('Email Verified', 'You can now sign in to your account.', 'success');
+        return true;
+      } catch (err) {
+        addToast('Verification Failed', errorMessage(err), 'error');
+        return false;
+      }
+    },
+    [addToast],
+  );
+
+  const resendVerification = useCallback(
+    async (email: string): Promise<{ retryAfterSeconds?: number } | void> => {
+      try {
+        const result = await api.auth.resendVerification(email);
+        addToast('Email Sent', result.message, 'success');
+        return { retryAfterSeconds: result.retryAfterSeconds };
+      } catch (err) {
+        addToast('Failed to Resend', errorMessage(err), 'error');
+      }
+    },
+    [addToast],
   );
 
   const updateAffiliatorStatus = useCallback(
@@ -719,6 +776,9 @@ export function useBeautyStore() {
     disable2FA,
     loginWithGoogle,
     registerAffiliator,
+    emailVerifyToken,
+    verifyEmailToken,
+    resendVerification,
     affiliators,
     updateAffiliatorStatus,
     updateAffiliator,
