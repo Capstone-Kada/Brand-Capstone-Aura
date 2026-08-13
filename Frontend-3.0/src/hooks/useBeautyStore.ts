@@ -221,7 +221,12 @@ export function useBeautyStore() {
       setChartData([]);
       setUndertoneStats([]);
       setConcernStats([]);
-      setCurrentRoute('landing');
+      setCurrentRoute((prev) => {
+        if (prev === 'public-recommendation' || prev === 'internal-preview') {
+          return prev;
+        }
+        return 'landing';
+      });
       addToast('Sesi Berakhir', 'Silakan login kembali untuk melanjutkan.', 'error');
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
@@ -650,8 +655,10 @@ export function useBeautyStore() {
           setScanResult(mapScanResultDto(result));
           setAnalysisStep(4);
 
-          const leadRows = await api.leads.list().catch(() => null);
-          if (leadRows) setLeads(leadRows.map(mapCustomerLeadDto));
+          if (getAccessToken()) {
+            const leadRows = await api.leads.list().catch(() => null);
+            if (leadRows) setLeads(leadRows.map(mapCustomerLeadDto));
+          }
         } catch (err) {
           console.warn('Backend AI Scan API unreachable or error, serving fallback AI analysis:', err);
           // Fallback scan result so the UI scan flow always renders rich AI metrics

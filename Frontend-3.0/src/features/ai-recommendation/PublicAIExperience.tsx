@@ -314,7 +314,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   // the 'result' step (several steps later) reads the live `scanResult` prop.
   const initiateScanProcess = (imgUrl: string) => {
     setCapturedImage(imgUrl);
-    // API call is now deferred until after questionnaire (in handleFinalizeResult)
+    // Pre-fetch real AI analysis immediately in background so it's 100% ready by the time user finishes questionnaire
+    onStartScan(imgUrl, undefined, undefined, undefined);
+
     setCurrentStep('scanning');
     setScanProgress(0);
     setSelectedArea(null);
@@ -332,10 +334,10 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
           clearInterval(interval);
           setTimeout(() => {
             setCurrentStep('select-area');
-          }, 800);
+          }, 300);
           return 100;
         }
-        const next = prev + 1;
+        const next = prev + 2;
         if (next >= 25 && next < 50) {
           setScanStatusText('Analyzing pigmentation levels & moisture...');
         } else if (next >= 50 && next < 75) {
@@ -347,7 +349,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
         }
         return next;
       });
-    }, 80); // 80ms * 100 ticks = 8000ms (8 detik)
+    }, 25); // ~1.25s fast & snappy scan animation
   };
 
   const handleProceedToNameStep = () => {
@@ -358,11 +360,6 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     if (!customerName.trim()) {
       onToast('Masukkan Nama', 'Silakan isi nama Anda terlebih dahulu.', 'error');
       return;
-    }
-    
-    // Kick off the real API scan now that we have all the user's preferences
-    if (capturedImage) {
-      onStartScan(capturedImage, selectedArea || undefined, finishPref, budgetPref);
     }
     
     setCurrentStep('result');
@@ -1330,9 +1327,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
                         {[
-                          { title: '< Rp. 100.000', subtitle: 'Affordable everyday beauty essentials', icon: '🏷️' },
-                          { title: '< Rp. 200.000', subtitle: 'Popular mid-range favorites & bestsellers', icon: '💎' },
-                          { title: '< Rp. 300.000', subtitle: 'Premium formulas & high-end luxury products', icon: '👑' },
+                          { title: '< Rp 100.000', subtitle: 'Affordable everyday beauty essentials', icon: '🏷️' },
+                          { title: 'Rp 101.000 - Rp 200.000', subtitle: 'Popular mid-range favorites & bestsellers', icon: '💎' },
+                          { title: 'Rp 201.000 - Rp 300.000', subtitle: 'Premium formulas & high-end luxury products', icon: '👑' },
                         ].map((item) => {
                           const isSelected = budgetPref === item.title;
                           return (

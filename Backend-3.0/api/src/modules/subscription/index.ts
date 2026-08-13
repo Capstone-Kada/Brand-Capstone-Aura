@@ -7,6 +7,7 @@ import { asyncHandler } from '../../shared/utils/async-handler.js';
 import { MidtransService } from '../../shared/services/midtrans.service.js';
 import { SubscriptionService, SUBSCRIPTION_PLANS } from './services/subscription.service.js';
 import { SubscriptionController, checkoutSchema } from './controllers/subscription.controller.js';
+import { resolveAffiliatorId } from '../../middlewares/resolve-affiliator.js';
 import { sendSuccess } from '../../shared/utils/api-response.js';
 
 export interface SubscriptionModuleDeps {
@@ -32,6 +33,7 @@ export function createSubscriptionModule(deps: SubscriptionModuleDeps): Router {
     '/checkout',
     authenticate,
     authorize('AFFILIATOR'),
+    resolveAffiliatorId(deps.db),
     validateRequest(checkoutSchema),
     asyncHandler(controller.checkout),
   );

@@ -90,8 +90,11 @@ http.interceptors.response.use(
         return http(originalRequest);
       }
 
+      const hadToken = Boolean(getAccessToken() || getRefreshToken());
       setTokens(null, null);
-      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      if (hadToken) {
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      }
     }
 
     return Promise.reject(error);
