@@ -150,7 +150,6 @@ flat yang dipakai `Frontend-3.0` (lihat `api/src/shared/services/ai-client.ts`),
 lalu mencocokkan hasilnya ke katalog produk affiliator dan menyimpan lead.
 
 ---
-tambah
 
 ## 1. `ai-pipeline/` — Logika Computer Vision
 
