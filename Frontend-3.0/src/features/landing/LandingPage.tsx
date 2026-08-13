@@ -37,6 +37,7 @@ import {
 import { RouteView } from '../../types';
 import { Button, Card, Badge, Accordion } from '../../components/ui/UIComponents';
 import { ScrollTextReveal } from '../../components/ui/TextReveal';
+import { PremiumLoader } from '../../components/ui/PremiumLoader';
 import { MOCK_TESTIMONIALS, MOCK_FAQS } from '../../services/mockData';
 
 const heroBgImage = '/image/Background.png';
@@ -221,6 +222,15 @@ const FEATURED_TESTIMONIALS = [
 ];
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [activeProfileId, setActiveProfileId] = useState<string>('medium-warm');
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -249,22 +259,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
     setActiveProfileId(profileId);
     setIsScanning(true);
     setScanProgress(0);
-  };
-
-  useEffect(() => {
-    if (!isScanning) return;
     const interval = setInterval(() => {
       setScanProgress((prev) => {
         if (prev >= 100) {
-          setIsScanning(false);
           clearInterval(interval);
+          setTimeout(() => setIsScanning(false), 500);
           return 100;
         }
-        return prev + 12;
+        return prev + 5;
       });
-    }, 70);
-    return () => clearInterval(interval);
-  }, [isScanning]);
+    }, 100);
+  };
 
   // Auto rotate testimonials every 10 seconds
   useEffect(() => {
@@ -276,9 +281,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 overflow-x-clip">
+      <PremiumLoader isVisible={isInitialLoading} theme="light" />
 
       {/* HIGH-END LUXURY HERO SECTION */}
-      <section className="relative pt-12 pb-24 lg:pt-16 lg:pb-36 overflow-hidden border-b border-pink-100/40 bg-[#FFF8FC]">
+      <section className="relative pt-24 pb-24 lg:pt-32 lg:pb-36 overflow-hidden border-b border-pink-100/40 bg-[#FFF8FC]">
 
         {/* Soft Dreamy Pastel Cloud Background Image */}
         <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
@@ -596,7 +602,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       </section>
 
       {/* ABOUT US SECTION - STICKY SCROLL-TRIGGERED TEXT REVEAL */}
-      <section id="about-container" ref={aboutContainerRef} className="relative bg-gradient-to-b from-white via-zinc-50/50 to-white">
+      <section id="about" ref={aboutContainerRef} className="scroll-mt-20 relative bg-gradient-to-b from-white via-zinc-50/50 to-white">
         
         {/* Absolute wrapper allows sticky child to stick across the full height of the section without pushing content */}
         <motion.div 
@@ -878,7 +884,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       </section>
 
       {/* HOW IT WORKS - REDESIGNED WITH SVG PATH ANIMATION & CLEAN WHITE AESTHETIC */}
-      <section id="how-it-works" className="py-24 sm:py-32 bg-white relative overflow-hidden">
+      <section id="how-it-works" className="scroll-mt-20 py-24 sm:py-32 bg-white relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-2xl mx-auto mb-20 space-y-3.5">
             <Badge variant="primary">How Aura Works</Badge>
@@ -1002,15 +1008,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       </section>
 
       {/* EVERYTHING A CREATOR NEEDS - FEATURES SECTION (MATCHES REFERENCE IMAGE) */}
-      <section className="py-20 sm:py-28 bg-[#FAFAFC] relative overflow-hidden border-t border-zinc-100">
+      <section id="features" className="scroll-mt-20 py-20 sm:py-28 bg-[#FAFAFC] relative overflow-hidden border-t border-zinc-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           
           {/* Header */}
           <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
             <div className="flex justify-center">
-              <span className="px-4 py-1 rounded-full border border-[#F26CA7]/60 text-[#F26CA7] bg-pink-50/50 text-[11px] font-bold uppercase tracking-wider">
-                FEATURES
-              </span>
+              <Badge variant="primary">
+                Feature
+              </Badge>
             </div>
             <h2 className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-zinc-900 tracking-tight leading-tight">
               Everything a creator needs

@@ -10,7 +10,9 @@ import {
   Sparkles,
   Link as LinkIcon,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Product, SkinTone, Undertone, SkinType, SkinConcern } from '../../types';
 import { Card, Button, Input, Select, Badge, Modal, Drawer } from '../../components/ui/UIComponents';
@@ -75,14 +77,32 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
   const [category, setCategory] = useState<Product['category']>('Foundation');
-  const [price, setPrice] = useState('42.00');
+  const [price, setPrice] = useState('150000');
   const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?auto=format&fit=crop&q=80&w=600');
+  const [imageUploadType, setImageUploadType] = useState<'url' | 'file'>('file');
   const [affiliateUrl, setAffiliateUrl] = useState('https://amzn.to/3sample_beauty');
   const [shade, setShade] = useState('Medium Warm 220');
   const [affiliatorNote, setAffiliatorNote] = useState('My top recommendation for glass-skin finish!');
   const [autoScrapeUrl, setAutoScrapeUrl] = useState('');
   const [isScraping, setIsScraping] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState('');
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size exceeds 5MB limit');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setImageUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSimulateScrape = () => {
     if (!autoScrapeUrl) return;
@@ -91,7 +111,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       setIsScraping(false);
       setName('Radiant Serum Concealer');
       setBrand('NARS Cosmetics');
-      setPrice('32.00');
+      setPrice('150000');
       setCategory('Concealer');
       setImageUrl('https://images.unsplash.com/photo-1631729371254-42c2892f0e6e?auto=format&fit=crop&q=80&w=600');
       setAffiliateUrl(autoScrapeUrl);
@@ -226,7 +246,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
                   <td className="py-3 text-zinc-600 font-medium">{prod.category}</td>
 
-                  <td className="py-3 font-bold text-zinc-900">${prod.price}</td>
+                  <td className="py-3 font-bold text-zinc-900">Rp {prod.price.toLocaleString('id-ID')}</td>
 
                   <td className="py-3">
                     <button
@@ -241,9 +261,21 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   </td>
 
                   <td className="py-3">
-                    <Badge variant={prod.status === 'Active' ? 'success' : 'outline'}>
-                      {prod.status}
-                    </Badge>
+                    <div className="flex flex-col gap-1">
+                      <Badge variant={prod.status === 'Active' ? 'success' : 'outline'}>
+                        {prod.status}
+                      </Badge>
+                      {prod.approvalStatus === 'Pending' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-bold">
+                          ⏳ Pending Approval
+                        </span>
+                      )}
+                      {prod.approvalStatus === 'Rejected' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full text-[10px] font-bold">
+                          ✗ Rejected
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   <td className="py-3 font-semibold text-zinc-800">{prod.clicks}</td>
@@ -288,15 +320,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold text-zinc-900 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-[#F26CA7]" />
-                Auto-Fill dari Master Product Catalog
+                Auto-Fill dari Master Product Catalog (Opsional)
               </label>
-              <Badge variant="primary" size="sm">Master Catalog</Badge>
+              <Badge variant="primary" size="sm">
+                {selectedProductId ? 'Master Catalog' : 'Manual / Custom'}
+              </Badge>
             </div>
             <select
               value={selectedProductId}
               onChange={(e) => {
-                const selectedProd = masterCatalog.find(p => p.id === e.target.value);
-                setSelectedProductId(e.target.value);
+                const val = e.target.value;
+                setSelectedProductId(val);
+                const selectedProd = masterCatalog.find(p => p.id === val);
                 if (selectedProd) {
                   setName(selectedProd.name);
                   setBrand(selectedProd.brand);
@@ -311,10 +346,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               }}
               className="w-full p-2.5 rounded-xl border border-purple-200 text-xs bg-white font-medium focus:ring-2 focus:ring-[#F26CA7]/30 focus:outline-none cursor-pointer"
             >
-              <option value="" disabled>
-                {masterCatalog.length === 0
-                  ? '-- Master catalog belum termuat --'
-                  : `-- Pilih dari ${masterCatalog.length} produk Master Catalog --`}
+              <option value="">
+                ✍️ -- Input Manual Sendiri (Custom Product) --
               </option>
               {masterCatalog.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -323,7 +356,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               ))}
             </select>
             <p className="text-[11px] text-zinc-500">
-              Memilih produk master akan otomatis mengisi Judul, Brand, Kategori, Harga, Shade, dan Foto Produk. Produk hanya bisa ditambahkan dari Master Catalog saat ini.
+              {selectedProductId 
+                ? 'Produk dari Master Catalog otomatis disetujui (Approved).'
+                : '💡 Kamu sedang menambah produk secara manual. Produk ini akan menunggu persetujuan Admin (Pending Approval) sebelum aktif di portal AI.'}
             </p>
           </div>
 
@@ -332,14 +367,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               label="Brand Name"
               placeholder="e.g. Rare Beauty"
               value={brand}
-              onChange={(e) => setBrand(e.target.value)}
+              onChange={(e) => {
+                setBrand(e.target.value);
+              }}
               required
             />
             <Input
               label="Product Title"
               placeholder="e.g. Soft Matte Lip Tint"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+              }}
               required
             />
           </div>
@@ -365,11 +404,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               onChange={(e) => setCategory(e.target.value as Product['category'])}
             />
             <Input
-              label="Price ($)"
+              label="Price (Rp)"
               type="number"
               placeholder="38.00"
               value={price}
-              onChange={(e) => setPrice(e.target.value)}
+              onChange={(e) => {
+                setPrice(e.target.value);
+              }}
               required
             />
           </div>
@@ -381,10 +422,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             onChange={(e) => setAffiliateUrl(e.target.value)}
             required
           />
-          {selectedProductId && !affiliateUrl.trim() && (
+          {!affiliateUrl.trim() && (
             <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 -mt-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              Wajib diisi — masukkan link affiliate kamu sendiri untuk produk ini sebelum bisa disimpan.
+              Wajib diisi — masukkan link affiliate kamu sendiri untuk produk ini.
             </p>
           )}
 
@@ -395,16 +436,84 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             onChange={(e) => setShade(e.target.value)}
           />
 
-          <Input
-            label="Product Photo URL"
-            placeholder="https://images.unsplash.com/..."
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-          />
+          {/* Photo Section with Upload File vs Paste URL */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-zinc-900">Foto Produk</label>
+              <div className="flex items-center p-0.5 bg-zinc-100 rounded-lg border border-black/[0.04] text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setImageUploadType('file')}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    imageUploadType === 'file'
+                      ? 'bg-white text-zinc-900 shadow-xs font-bold'
+                      : 'text-zinc-500 hover:text-zinc-800'
+                  }`}
+                >
+                  📁 Upload File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageUploadType('url')}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    imageUploadType === 'url'
+                      ? 'bg-white text-zinc-900 shadow-xs font-bold'
+                      : 'text-zinc-500 hover:text-zinc-800'
+                  }`}
+                >
+                  🔗 Gunakan URL
+                </button>
+              </div>
+            </div>
+
+            {imageUploadType === 'file' ? (
+              <div className="flex gap-3 items-center">
+                {imageUrl ? (
+                  <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-50 shrink-0 group">
+                    <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl('')}
+                      className="absolute inset-0 bg-black/60 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] font-bold transition-opacity"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                ) : null}
+
+                <label className="flex-1 flex flex-col items-center justify-center p-3.5 border-2 border-dashed border-zinc-200 hover:border-[#F26CA7]/50 rounded-2xl cursor-pointer bg-zinc-50/50 hover:bg-pink-50/20 transition-all text-center">
+                  <Upload className="w-4 h-4 text-zinc-400 mb-1" />
+                  <span className="text-xs font-bold text-zinc-700">Pilih Foto dari Perangkat</span>
+                  <span className="text-[10px] text-zinc-400 mt-0.5">PNG, JPG, WEBP hingga 5MB</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            ) : (
+              <div className="flex gap-2.5 items-center">
+                {imageUrl ? (
+                  <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 shrink-0">
+                    <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                ) : null}
+                <div className="flex-1">
+                  <Input
+                    placeholder="https://images.unsplash.com/..."
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
           <Input
-            label="Creator's Personal Note"
-            placeholder="Why you love & recommend this product..."
+            label="Ingredients"
+            placeholder="Contoh: Niacinamide, Hyaluronic Acid, dll..."
             value={affiliatorNote}
             onChange={(e) => setAffiliatorNote(e.target.value)}
           />
@@ -413,8 +522,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <Button type="button" onClick={() => setIsAddOpen(false)} variant="ghost">
               Cancel
             </Button>
-            <Button type="submit" variant="primary" disabled={!selectedProductId || !affiliateUrl.trim()}>
-              Save Product & Enable Match
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={
+                !affiliateUrl.trim() ||
+                (!selectedProductId && (!name.trim() || !brand.trim() || !price.trim()))
+              }
+            >
+              {selectedProductId ? 'Save Product & Enable Match' : 'Submit for Admin Approval'}
             </Button>
           </div>
         </form>
@@ -470,8 +586,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             />
 
             <Input
-              label="Catatan Affiliator"
-              placeholder="Why you love & recommend this product..."
+              label="Ingredients"
+              placeholder="Contoh: Niacinamide, Hyaluronic Acid, dll..."
               value={editAffiliatorNote}
               onChange={(e) => setEditAffiliatorNote(e.target.value)}
             />

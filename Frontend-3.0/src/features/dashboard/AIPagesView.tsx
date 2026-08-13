@@ -38,8 +38,8 @@ export const AIPagesView: React.FC<AIPagesViewProps> = ({
   const [primaryColor, setPrimaryColor] = useState(activePage?.primaryColor || '#F26CA7');
   const [bio, setBio] = useState(user.bio);
   const [allowCamera, setAllowCamera] = useState(true);
-
-  const publicUrl = `https://beauty.ai/${activePage?.slug || 'kate-glow'}`;
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://beauty.ai';
+  const publicUrl = `${baseUrl}/${activePage?.slug || 'kate-glow'}`;
 
   const handleSavePage = () => {
     if (activePage) {
@@ -62,7 +62,13 @@ export const AIPagesView: React.FC<AIPagesViewProps> = ({
           <p className="text-xs text-zinc-500 mt-0.5">Customize your interactive selfie scan page & live mobile preview</p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Status badge: Always Live */}
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Live & Active
+          </span>
+
           <Button onClick={() => onCopyLink(publicUrl)} variant="outline" size="sm" icon={<Copy className="w-4 h-4" />}>
             Copy Public Link
           </Button>

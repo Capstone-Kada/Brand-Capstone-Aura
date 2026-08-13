@@ -28,10 +28,22 @@ import {
   Scan,
   Info
 } from 'lucide-react';
+import { 
+  UserIcon as UserIconSolid,
+  SwatchIcon as SwatchIconSolid,
+  SunIcon as SunIconSolid,
+  ShoppingBagIcon as ShoppingBagIconSolid,
+  SparklesIcon as SparklesIconSolid,
+  ViewfinderCircleIcon as ViewfinderCircleIconSolid,
+  LockClosedIcon as LockClosedIconSolid
+} from '@heroicons/react/24/solid';
 import { RouteView, Product, AIAnalysisResult, UserProfile } from '../../types';
 import { Button, Card, Badge, Progress } from '../../components/ui/UIComponents';
+import { Modal } from '../../components/ui/Modal';
+import { PremiumLoader } from '../../components/ui/PremiumLoader';
 import { api, mapListingToProduct, type PublicAIPageDto } from '../../services/api';
 import confetti from 'canvas-confetti';
+import { MOCK_PRODUCTS } from '../../services/mockData';
 
 interface PublicAIExperienceProps {
   user: UserProfile;
@@ -42,7 +54,7 @@ interface PublicAIExperienceProps {
   analysisStep: number;
   scanResult: AIAnalysisResult | null;
   isPublicView?: boolean;
-  onStartScan: (img: string) => void;
+  onStartScan: (img: string, skinPref?: string, finishPref?: string, budgetPref?: string) => void;
   onResetScan: () => void;
   onNavigate: (route: RouteView) => void;
   onToast: (title: string, desc?: string, type?: 'success' | 'error' | 'info') => void;
@@ -51,6 +63,45 @@ interface PublicAIExperienceProps {
 
 type ScanFlowStep = 'gateway' | 'camera-guide' | 'camera' | 'scanning' | 'select-area' | 'enter-name' | 'result' | 'recommendations';
 type AnalysisArea = 'bibir' | 'shade';
+
+// Cycling status text for the scanner loading screen
+const SCAN_STEPS = [
+  'Initializing AI engine...',
+  'Calibrating skin detector...',
+  'Loading beauty model...',
+  'Preparing analysis tools...',
+  'Almost ready...',
+];
+const ScanStepText: React.FC = () => {
+  const [idx, setIdx] = React.useState(0);
+  React.useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % SCAN_STEPS.length), 1200);
+    return () => clearInterval(t);
+  }, []);
+  return <span className="text-xs font-mono text-[#F26CA7]/80 tracking-wider">{SCAN_STEPS[idx]}</span>;
+};
+
+// Rotating beauty quotes for the minimal loading screen
+const BEAUTY_QUOTES = [
+  { text: '"Your skin tells your story."', sub: 'Let AI read it beautifully.' },
+  { text: '"Beauty meets intelligence."', sub: 'Personalized just for you.' },
+  { text: '"Science of beauty, art of glow."', sub: 'Precision AI Skin Intelligence.' },
+  { text: '"Every shade has its perfect match."', sub: 'We\'ll find yours.' },
+];
+const BeautyQuoteText: React.FC = () => {
+  const [idx, setIdx] = React.useState(0);
+  React.useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % BEAUTY_QUOTES.length), 2500);
+    return () => clearInterval(t);
+  }, []);
+  const q = BEAUTY_QUOTES[idx];
+  return (
+    <div className="space-y-2" key={idx} style={{ animation: 'fadeSlide 2.5s ease-in-out' }}>
+      <p className="text-sm font-light text-white/60 italic leading-relaxed">{q.text}</p>
+      <p className="text-[10px] tracking-[0.2em] text-[#F26CA7]/40 uppercase">{q.sub}</p>
+    </div>
+  );
+};
 
 export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   user,
@@ -85,7 +136,8 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     };
   }, [pageSlug]);
 
-  const products = publicPageData ? publicPageData.featuredListings.map(mapListingToProduct) : productsProp;
+  const baseProducts = publicPageData && publicPageData.featuredListings.length > 0 ? publicPageData.featuredListings.map(mapListingToProduct) : productsProp;
+  const products = baseProducts.length > 0 ? baseProducts : MOCK_PRODUCTS;
   const creator = publicPageData
     ? {
         name: publicPageData.creatorName || publicPageData.title,
@@ -98,22 +150,22 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   // Local Flow Control State
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [initialLoadProgress, setInitialLoadProgress] = useState<number>(0);
-  const [loadingStageText, setLoadingStageText] = useState<string>('Memulai Aura AI Beauty Engine...');
+  const [loadingStageText, setLoadingStageText] = useState<string>('Starting Aura AI Beauty Engine...');
 
   const [currentStep, setCurrentStep] = useState<ScanFlowStep>('gateway');
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [selectedArea, setSelectedArea] = useState<AnalysisArea | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
   const [subQuestionIndex, setSubQuestionIndex] = useState<number>(0);
+  const [showRecommendations, setShowRecommendations] = useState<boolean>(false);
   
   // Beauty Preference Questionnaire State (AURA PRD Feature 2) - Mandatory selections
   const [budgetPref, setBudgetPref] = useState<string>('');
   const [finishPref, setFinishPref] = useState<string>('');
   const [occasionPref, setOccasionPref] = useState<string>('');
+  const [agePref, setAgePref] = useState<string>('');
   
   // Product Comparison State
-  const [compareIds, setCompareIds] = useState<string[]>([]);
-  const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
 
   const [animatedScore, setAnimatedScore] = useState<number>(0);
 
@@ -149,30 +201,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     }
   }, [currentStep, scanResult]);
 
-  // Pre-select top products for comparison when reaching result step
-  useEffect(() => {
-    if (currentStep === 'result' && compareIds.length === 0) {
-      const rels = getRelevantProducts();
-      if (rels.length >= 2) {
-        setCompareIds([rels[0].id, rels[1].id]);
-      } else if (rels.length === 1) {
-        setCompareIds([rels[0].id]);
-      }
-    }
-  }, [currentStep]);
 
-  const toggleCompareProduct = (id: string) => {
-    setCompareIds((prev) => {
-      if (prev.includes(id)) {
-        return prev.filter((pId) => pId !== id);
-      }
-      if (prev.length >= 3) {
-        onToast('Maksimal 3 Produk', 'Anda dapat membandingkan hingga 3 produk sekaligus.', 'info');
-        return prev;
-      }
-      return [...prev, id];
-    });
-  };
 
   // Initial Page Loading Animation Simulation
   useEffect(() => {
@@ -184,7 +213,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
       setInitialLoadProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval);
-          setTimeout(() => setIsInitialLoading(false), 400);
+          setTimeout(() => setIsInitialLoading(false), 600);
           return 100;
         }
         const next = prev + 10;
@@ -197,7 +226,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
         }
         return next;
       });
-    }, 150);
+    }, 240);
 
     return () => clearInterval(interval);
   }, [isInitialLoading]);
@@ -208,7 +237,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   
   // Scanning Animation Progress State
   const [scanProgress, setScanProgress] = useState<number>(0);
-  const [scanStatusText, setScanStatusText] = useState<string>('Memulai deteksi sensor AI...');
+  const [scanStatusText, setScanStatusText] = useState<string>('Starting AI sensor detection...');
 
   // Camera State
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -231,11 +260,11 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
           videoRef.current.srcObject = stream;
         }
       } else {
-        setCameraError('Kamera tidak didukung di perangkat ini. Anda dapat mengunggah foto.');
+        setCameraError('Camera is not supported on this device. You can upload a photo.');
       }
     } catch (err) {
       console.warn('Camera access prevented or unavailable:', err);
-      setCameraError('Akses kamera tidak diizinkan. Silakan pilih foto dari perangkat Anda.');
+      setCameraError('Camera access denied. Please select a photo from your device.');
     }
   };
 
@@ -285,15 +314,17 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   // the 'result' step (several steps later) reads the live `scanResult` prop.
   const initiateScanProcess = (imgUrl: string) => {
     setCapturedImage(imgUrl);
-    onStartScan(imgUrl);
+    // API call is now deferred until after questionnaire (in handleFinalizeResult)
     setCurrentStep('scanning');
     setScanProgress(0);
     setSelectedArea(null);
     setBudgetPref('');
     setFinishPref('');
     setOccasionPref('');
+    setAgePref('');
+    setShowRecommendations(false);
     setSubQuestionIndex(0);
-    setScanStatusText('Mendeteksi pola kontur & fitur wajah...');
+    setScanStatusText('Detecting contour patterns & facial features...');
 
     const interval = setInterval(() => {
       setScanProgress((prev) => {
@@ -306,13 +337,13 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
         }
         const next = prev + 1;
         if (next >= 25 && next < 50) {
-          setScanStatusText('Menganalisis tingkat pigmentasi & kelembapan...');
+          setScanStatusText('Analyzing pigmentation levels & moisture...');
         } else if (next >= 50 && next < 75) {
-          setScanStatusText('Menganalisis spektrum undertone & skin tone...');
+          setScanStatusText('Analyzing undertone spectrum & skin tone...');
         } else if (next >= 75 && next < 95) {
           setScanStatusText('Mengomparasi spektrum warna dengan database AI...');
         } else if (next >= 95) {
-          setScanStatusText('Pemindaian AI Selesai!');
+          setScanStatusText('AI Scan Complete!');
         }
         return next;
       });
@@ -322,13 +353,18 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   const handleProceedToNameStep = () => {
     setCurrentStep('enter-name');
   };
-
   const handleFinalizeResult = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName.trim()) {
       onToast('Masukkan Nama', 'Silakan isi nama Anda terlebih dahulu.', 'error');
       return;
     }
+    
+    // Kick off the real API scan now that we have all the user's preferences
+    if (capturedImage) {
+      onStartScan(capturedImage, selectedArea || undefined, finishPref, budgetPref);
+    }
+    
     setCurrentStep('result');
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.5 } });
   };
@@ -341,6 +377,8 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     setBudgetPref('');
     setFinishPref('');
     setOccasionPref('');
+    setAgePref('');
+    setShowRecommendations(false);
     setSubQuestionIndex(0);
     setCurrentStep('gateway');
     onResetScan();
@@ -365,26 +403,34 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 } });
     onRecordClick?.(prod.id);
     window.open(prod.affiliateUrl, '_blank');
-    onToast('Mengalihkan ke Produk', `Membuka produk ${prod.name} di toko mitra.`, 'info');
+    onToast('Redirecting to Product', `Opening product ${prod.name} in partner store.`, 'info');
   };
 
   // Filter products based on selected area (Lips vs Face & Shade)
+  const getAffiliateButtonText = (url: string) => {
+    return 'Buy Product';
+  };
+
   const getRelevantProducts = () => {
-    if (scanResult && scanResult.recommendedProducts.length > 0) {
-      const aiMatched = scanResult.recommendedProducts.map((m) => m.product);
-      const areaFiltered =
-        selectedArea === 'bibir'
-          ? aiMatched.filter((p) => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category))
-          : aiMatched.filter((p) => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer', 'Eyeshadow'].includes(p.category));
-      if (areaFiltered.length > 0) return areaFiltered;
-      if (aiMatched.length > 0) return aiMatched;
-    }
+    let baseProducts = scanResult && scanResult.recommendedProducts.length > 0
+      ? scanResult.recommendedProducts.map((m) => m.product)
+      : products;
+
     if (selectedArea === 'bibir') {
-      const lipProds = products.filter(p => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category));
-      return lipProds.length > 0 ? lipProds : products.filter(p => ['Lipstick', 'Lip Tint', 'Lip Cream'].includes(p.category));
+      let lips = baseProducts.filter((p) => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category));
+      // If AI didn't return any lip products, fallback to searching the entire affiliator catalog
+      if (lips.length === 0) {
+        lips = products.filter((p) => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category));
+      }
+      return lips.length > 0 ? lips : baseProducts;
     }
-    const shadeProds = products.filter(p => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer'].includes(p.category));
-    return shadeProds.length > 0 ? shadeProds : products;
+
+    let face = baseProducts.filter((p) => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer', 'Eyeshadow'].includes(p.category));
+    // If AI didn't return any face products, fallback to searching the entire affiliator catalog
+    if (face.length === 0) {
+      face = products.filter((p) => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer', 'Eyeshadow'].includes(p.category));
+    }
+    return face.length > 0 ? face : baseProducts;
   };
 
   // Steps map for top progress bar
@@ -468,58 +514,12 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
       }}
     >
       
-      {/* ELEGANT MINIMALIST LOADING OVERLAY */}
-      <AnimatePresence>
-        {isInitialLoading && (
-          <motion.div
-            key="minimalist-loading-overlay"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6, ease: 'easeInOut' }}
-            className="fixed inset-0 z-50 bg-[#f3ebf5] flex flex-col items-center justify-center p-6 select-none overflow-hidden"
-          >
-            {/* Ambient Background Glows */}
-            <div className="absolute top-[-10%] left-[-10%] w-[60vw] h-[60vw] max-w-[650px] max-h-[650px] rounded-full bg-[#cca6d9]/30 blur-[130px] pointer-events-none" />
-            <div className="absolute top-[0%] right-[-10%] w-[50vw] h-[50vw] max-w-[550px] max-h-[550px] rounded-full bg-[#fbe2f3]/45 blur-[120px] pointer-events-none" />
-            <div className="absolute bottom-[-10%] left-[20%] w-[55vw] h-[55vw] max-w-[600px] max-h-[600px] rounded-full bg-[#e6c2ed]/25 blur-[130px] pointer-events-none" />
+      {/* OPTION 3: BEAUTY TECH MINIMAL LOADING OVERLAY */}
+      <PremiumLoader isVisible={isInitialLoading} theme="dark">
+        <BeautyQuoteText />
+      </PremiumLoader>
 
-            {/* Centered Content */}
-            <div className="relative z-10 flex flex-col items-center justify-center text-center space-y-7 max-w-sm px-4">
-              
-              {/* Brand & Main Title */}
-              <div className="space-y-1.5">
-                <h1 className="text-lg sm:text-xl font-medium tracking-[0.05em] text-[#5e3e65] font-['Outfit']">
-                  Virtual Scan Analysis
-                </h1>
-              </div>
 
-              {/* Radial Spoke Spinner */}
-              <div className="py-2 flex items-center justify-center">
-                <svg className="w-8 h-8 text-[#6d4d73] animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="1.0"/>
-                  <path d="M17 3.5L15 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.9"/>
-                  <path d="M20.5 7L17 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.8"/>
-                  <path d="M22 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
-                  <path d="M20.5 17L17 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.6"/>
-                  <path d="M17 20.5L15 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.5"/>
-                  <path d="M12 22V18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.4"/>
-                  <path d="M7 20.5L9 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.3"/>
-                  <path d="M3.5 17L7 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.2"/>
-                  <path d="M2 12H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.1"/>
-                  <path d="M3.5 7L7 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.1"/>
-                  <path d="M7 3.5L9 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.15"/>
-                </svg>
-              </div>
-
-              {/* Status Text */}
-              <p className="text-xs sm:text-sm font-light text-[#7a5880]/85 tracking-wider lowercase">
-                please wait a moment
-              </p>
-
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Hidden Canvas for Camera Snapshots */}
       <canvas ref={canvasRef} className="hidden" />
@@ -540,7 +540,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                   className="flex items-center gap-2 text-xs font-bold text-zinc-700 hover:text-zinc-950 bg-zinc-100 hover:bg-zinc-200/80 px-4 py-2.5 rounded-xl transition-all cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" />
-                  <span>Kembali ke Dashboard</span>
+                  <span>Back to Dashboard</span>
                 </button>
               </div>
             ) : currentStep !== 'gateway' ? (
@@ -624,7 +624,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                 className="flex items-center gap-2 text-xs font-bold text-zinc-700 hover:text-zinc-950 bg-white/80 hover:bg-white backdrop-blur-md px-4 py-2 rounded-xl transition-all cursor-pointer shadow-xs border border-white/60"
               >
                 <ChevronLeft className="w-4 h-4" />
-                <span>Kembali ke Dashboard</span>
+                <span>Back to Dashboard</span>
               </button>
               <button
                 onClick={triggerReplayLoading}
@@ -754,13 +754,13 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
               <button
                 onClick={() => setCurrentStep('camera')}
                 className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
-                title="Kembali"
+                title="Back"
               >
                 <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
               </button>
             </div>
 
-            <div className="relative z-10 w-full max-w-xl sm:max-w-2xl mx-auto mt-10 sm:mt-14 mb-auto space-y-6 px-4">
+            <div className="relative z-10 w-full max-w-xl sm:max-w-2xl mx-auto mt-6 sm:mt-10 mb-auto space-y-3 px-4">
               {/* Top Scanned Face Avatar with Title */}
               <div className="text-center space-y-3">
                 <div className="relative w-20 h-20 mx-auto">
@@ -771,10 +771,6 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                       className="w-full h-full object-cover rounded-3xl shadow-md border-2 border-white"
                     />
                   )}
-                  {/* Glowing Overlay Badge */}
-                  <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-gradient-to-tr from-[#FF73B6] to-[#C786FF] text-white flex items-center justify-center shadow-md border-2 border-white">
-                    <Sparkles className="w-4 h-4 stroke-[2.2] animate-pulse" />
-                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -795,9 +791,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     id: 1,
                     stepNum: '01',
                     title: 'Analyzing Face',
-                    subtitle: 'Mendeteksi fitur & kontur wajah',
+                    subtitle: 'Detecting facial features & contours',
                     details: 'Melakukan pemetaan facial landmarks & simetri',
-                    icon: User,
+                    icon: UserIconSolid,
                     minProgress: 0,
                     maxProgress: 20,
                   },
@@ -805,9 +801,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     id: 2,
                     stepNum: '02',
                     title: 'Detecting Skin Tone',
-                    subtitle: 'Menganalisis warna & tekstur kulit',
+                    subtitle: 'Analyzing skin color & texture',
                     details: 'Mengukur pigmentasi, kelembapan & kejernihan',
-                    icon: Palette,
+                    icon: SwatchIconSolid,
                     minProgress: 20,
                     maxProgress: 45,
                   },
@@ -815,9 +811,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     id: 3,
                     stepNum: '03',
                     title: 'Finding Undertone',
-                    subtitle: 'Menganalisis spektrum undertone alami',
-                    details: 'Mendeteksi spektrum undertone (Cool, Neutral, Warm)',
-                    icon: Sun,
+                    subtitle: 'Analyzing natural undertone spectrum',
+                    details: 'Detecting undertone spectrum (Cool, Neutral, Warm)',
+                    icon: SunIconSolid,
                     minProgress: 45,
                     maxProgress: 70,
                   },
@@ -826,8 +822,8 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     stepNum: '04',
                     title: 'Matching Products',
                     subtitle: 'Mengomparasi spektrum dengan database AI',
-                    details: 'Mencocokkan shade foundation, lipstick & blush',
-                    icon: ShoppingBag,
+                    details: 'Matching foundation, lipstick & blush shades',
+                    icon: ShoppingBagIconSolid,
                     minProgress: 70,
                     maxProgress: 90,
                   },
@@ -835,9 +831,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     id: 5,
                     stepNum: '05',
                     title: 'Preparing Recommendation',
-                    subtitle: 'Menyusun rekomendasi kecantikan personal',
+                    subtitle: 'Curating personal beauty recommendations',
                     details: 'Menghasilkan panduan kecantikan tersuai',
-                    icon: Sparkles,
+                    icon: SparklesIconSolid,
                     minProgress: 90,
                     maxProgress: 100,
                   },
@@ -875,7 +871,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                           opacity: [0.45, 0.6, 0.45]
                         }}
                         transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-                        className="absolute top-0 w-[86%] h-[160px] rounded-[28px] bg-gradient-to-b from-[#F2EBF5] to-[#E8DCED] border border-white/80 shadow-xs pointer-events-none"
+                        className="absolute top-0 w-[86%] h-[160px] rounded-[28px] bg-gradient-to-b from-[#FAF5FF] to-[#F3E8FF] border border-white/80 shadow-xs pointer-events-none"
                       />
                     )}
 
@@ -888,7 +884,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                           opacity: [0.75, 0.88, 0.75]
                         }}
                         transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut', delay: 0.2 }}
-                        className="absolute top-0 w-[93%] h-[160px] rounded-[30px] bg-white/90 border border-purple-100/80 shadow-md pointer-events-none"
+                        className="absolute top-0 w-[93%] h-[160px] rounded-[30px] bg-white/90 border border-[#D8B4FE]/40 shadow-md pointer-events-none"
                       />
                     )}
 
@@ -900,7 +896,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                         animate={{ opacity: 1, y: 0, scale: 1, rotate: 0 }}
                         exit={{ opacity: 0, y: -35, scale: 0.9, rotate: -2, transition: { duration: 0.22 } }}
                         transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-                        className="relative w-full h-[160px] rounded-[32px] bg-white border-2 border-[#FF73B6]/30 shadow-xl shadow-purple-500/10 p-5 flex flex-col justify-center overflow-hidden"
+                        className="relative w-full h-[160px] rounded-[32px] bg-white border-2 border-[#D8B4FE]/30 shadow-xl shadow-[#7E22CE]/10 p-5 flex flex-col justify-center overflow-hidden"
                       >
                         {/* Continuous subtle breathing float inside card frame */}
                         <motion.div
@@ -909,28 +905,20 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                           className="w-full h-full flex flex-col justify-center"
                         >
                           {/* Background Soft Radial Glow */}
-                          <div className="absolute -top-12 -right-12 w-32 h-32 bg-gradient-to-tr from-[#FF73B6]/20 to-[#C786FF]/20 rounded-full blur-xl pointer-events-none animate-pulse" />
-
-                          {/* Top Right Processing Loader */}
-                          <div className="absolute top-4 right-5 flex items-center gap-1.5 text-[11px] font-bold text-zinc-400 bg-zinc-50 px-2.5 py-1 rounded-full border border-zinc-100">
-                            <Loader2 className="w-3.5 h-3.5 text-[#FF73B6] animate-spin" />
-                            <span className="text-[#FF73B6]">Memproses</span>
-                          </div>
+                          <div className="absolute -top-12 -right-12 w-32 h-32 bg-gradient-to-tr from-[#D8B4FE]/20 to-[#9333EA]/10 rounded-full blur-xl pointer-events-none animate-pulse" />
 
                           {/* Card Body - Animated Icon, Title & Subtitle */}
                           <div className="flex items-center gap-4">
                             <div className="relative">
-                              {/* Pulsing ring behind icon */}
-                              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-[#FF73B6] to-[#C786FF] opacity-40 blur-xs animate-pulse" />
-                              <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#FF73B6] to-[#C786FF] text-white flex items-center justify-center shrink-0 shadow-md">
-                                <IconComp className="w-7 h-7 stroke-[2.2] animate-bounce-subtle" />
+                              <div className="relative w-14 h-14 rounded-2xl bg-[#FCE7F3] text-[#F6559C] flex items-center justify-center shrink-0 shadow-sm border border-[#F6559C]/10">
+                                <IconComp className="w-7 h-7 animate-bounce-subtle" />
                               </div>
                             </div>
                             <div className="min-w-0 flex-1 text-left">
                               <h3 className="text-base sm:text-lg font-black text-zinc-900 tracking-tight leading-snug">
                                 {activeStep.title}
                               </h3>
-                              <p className="text-xs text-[#C83B75] font-semibold mt-0.5 leading-snug line-clamp-2">
+                              <p className="text-xs text-zinc-700 font-semibold mt-0.5 leading-snug line-clamp-2">
                                 {activeStep.subtitle}
                               </p>
                             </div>
@@ -945,22 +933,28 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
               })()}
             </div>
 
-
-
             {/* Overall Progress Footer */}
-            <div className="pt-2 border-t border-zinc-100 space-y-2">
-              <div className="flex justify-between items-center text-xs font-semibold">
-                <span className="text-zinc-500">Total Analisis AI</span>
-                <span className="text-[#FF73B6] font-extrabold text-sm">{scanProgress}%</span>
-              </div>
-              <div className="w-full h-2 bg-zinc-100 rounded-full overflow-hidden p-0.5">
+            <div className="pt-2 border-t border-zinc-100 flex items-center gap-3">
+              <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden p-0.5">
                 <motion.div
-                  className="h-full bg-gradient-to-r from-[#FF73B6] via-[#C786FF] to-[#A855F7] rounded-full"
+                  className="h-full bg-[#F6559C] rounded-full shadow-[0_0_8px_#F6559C]/40"
                   initial={{ width: '0%' }}
                   animate={{ width: `${scanProgress}%` }}
                   transition={{ duration: 0.2, ease: 'easeOut' }}
                 />
               </div>
+              <span className="text-[#F6559C] font-extrabold text-sm min-w-[36px] text-right">{scanProgress}%</span>
+            </div>
+
+            {/* Security Notice */}
+            <div className="pt-4 pb-2 flex flex-col items-center justify-center text-center space-y-1">
+              <div className="flex items-center gap-1.5 text-zinc-800 font-extrabold text-[13px]">
+                <LockClosedIconSolid className="w-3.5 h-3.5" />
+                <span>100% Private & Secure</span>
+              </div>
+              <p className="text-[11px] text-zinc-500 font-medium tracking-wide">
+                Your data is encrypted and never stored.
+              </p>
             </div>
 
           </div>
@@ -993,7 +987,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     <button
                       onClick={() => setCurrentStep('gateway')}
                       className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
-                      title="Kembali"
+                      title="Back"
                     >
                       <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
                     </button>
@@ -1087,7 +1081,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     <button
                       onClick={() => setCurrentStep('camera-guide')}
                       className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
-                      title="Kembali"
+                      title="Back"
                     >
                       <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
                     </button>
@@ -1184,7 +1178,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                       style={{ padding: '10px 30px' }}
                     >
                       <Camera className="w-4 h-4 stroke-[2.2]" />
-                      <span>Ambil Foto</span>
+                      <span>Take Photo</span>
                     </button>
                   </div>
 
@@ -1218,7 +1212,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                       }
                     }}
                     className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
-                    title="Kembali"
+                    title="Back"
                   >
                     <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
                   </button>
@@ -1256,7 +1250,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8 sm:space-y-10">
                       <div className="text-center space-y-1">
                         <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
-                          Question 1 of 4
+                          Question 1 of 5
                         </p>
                         <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
                           Select Focus Area
@@ -1265,8 +1259,8 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 max-w-2xl mx-auto">
                         {[
-                          { key: 'bibir', title: 'Lips Focus', subtitle: 'Natural lip tone & lipstick shade match', icon: '💄' },
-                          { key: 'shade', title: 'Base / Skin', subtitle: 'Skin Tone & Undertone match for Cushion', icon: '🧴' },
+                          { key: 'bibir', title: 'Lips Focus', subtitle: 'Natural lip tone & lipstick shade match', icon: '/image/Lipstick.png' },
+                          { key: 'shade', title: 'Base / Skin', subtitle: 'Skin Tone & Undertone match for Cushion', icon: '/image/Makeup.png' },
                         ].map((item) => {
                           const isSelected = selectedArea === item.key;
                           return (
@@ -1285,7 +1279,11 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                                   <Check className="w-4 h-4 stroke-[3]" />
                                 </div>
                               )}
-                              <span className="text-4xl sm:text-5xl">{item.icon}</span>
+                              {item.icon.startsWith('/') ? (
+                                <img src={item.icon} alt={item.title} className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-sm hover:scale-105 transition-transform" />
+                              ) : (
+                                <span className="text-4xl sm:text-5xl">{item.icon}</span>
+                              )}
                               <div className="space-y-1">
                                 <h3 className="text-lg sm:text-xl font-semibold font-['Satoshi'] tracking-[-0.03em] text-[#27272A]">
                                   {item.title}
@@ -1323,7 +1321,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8 sm:space-y-10">
                       <div className="text-center space-y-1">
                         <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
-                          Question 2 of 4
+                          Question 2 of 5
                         </p>
                         <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
                           Target Product Budget
@@ -1332,9 +1330,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
                         {[
-                          { title: 'Di bawah Rp150K', subtitle: 'Affordable everyday beauty essentials', icon: '🏷️' },
-                          { title: 'Rp150K - Rp300K', subtitle: 'Popular mid-range favorites & bestsellers', icon: '💎' },
-                          { title: 'Di atas Rp300K', subtitle: 'Premium formulas & high-end luxury products', icon: '👑' },
+                          { title: '< Rp. 100.000', subtitle: 'Affordable everyday beauty essentials', icon: '🏷️' },
+                          { title: '< Rp. 200.000', subtitle: 'Popular mid-range favorites & bestsellers', icon: '💎' },
+                          { title: '< Rp. 300.000', subtitle: 'Premium formulas & high-end luxury products', icon: '👑' },
                         ].map((item) => {
                           const isSelected = budgetPref === item.title;
                           return (
@@ -1353,7 +1351,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                                   <Check className="w-4 h-4 stroke-[3]" />
                                 </div>
                               )}
-                              <span className="text-3xl sm:text-4xl">{item.icon}</span>
+                              {/* Icon removed per user request */}
                               <div className="space-y-1">
                                 <h3 className="text-base sm:text-lg font-semibold font-['Satoshi'] tracking-[-0.03em] text-[#27272A]">
                                   {item.title}
@@ -1391,7 +1389,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8 sm:space-y-10">
                       <div className="text-center space-y-1">
                         <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
-                          Question 3 of 4
+                          Question 3 of 5
                         </p>
                         <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
                           Desired Finish Effect
@@ -1421,7 +1419,6 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                                   <Check className="w-4 h-4 stroke-[3]" />
                                 </div>
                               )}
-                              <span className="text-3xl sm:text-4xl">{item.icon}</span>
                               <div className="space-y-1">
                                 <h3 className="text-base sm:text-lg font-semibold font-['Satoshi'] tracking-[-0.03em] text-[#27272A]">
                                   {item.title}
@@ -1459,7 +1456,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8 sm:space-y-10">
                       <div className="text-center space-y-1">
                         <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
-                          Question 4 of 4
+                          Question 4 of 5
                         </p>
                         <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
                           Usage Occasion
@@ -1468,9 +1465,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
                         {[
-                          { title: 'Daily Wear', subtitle: 'Lightweight everyday makeup & natural feel', icon: '☀️' },
-                          { title: 'Office & Casual', subtitle: 'Polished, neat & professional look', icon: '💼' },
-                          { title: 'Special Event', subtitle: 'High-coverage, long-lasting glam', icon: '💃' },
+                          { title: 'Daily Wear', subtitle: 'Lightweight everyday makeup & natural feel', icon: '/image/Daily-wear.png' },
+                          { title: 'Office & Casual', subtitle: 'Polished, neat & professional look', icon: '/image/office-wearing.png' },
+                          { title: 'Special Event', subtitle: 'High-coverage, long-lasting glam', icon: '/image/Special-event.png' },
                         ].map((item) => {
                           const isSelected = occasionPref === item.title;
                           return (
@@ -1489,7 +1486,11 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                                   <Check className="w-4 h-4 stroke-[3]" />
                                 </div>
                               )}
-                              <span className="text-3xl sm:text-4xl">{item.icon}</span>
+                              {item.icon.startsWith('/') ? (
+                                <img src={item.icon} alt={item.title} className="w-14 h-14 sm:w-16 sm:h-16 object-contain drop-shadow-sm hover:scale-105 transition-transform" />
+                              ) : (
+                                <span className="text-3xl sm:text-4xl">{item.icon}</span>
+                              )}
                               <div className="space-y-1">
                                 <h3 className="text-base sm:text-lg font-semibold font-['Satoshi'] tracking-[-0.03em] text-[#27272A]">
                                   {item.title}
@@ -1503,13 +1504,65 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                         })}
                       </div>
 
-                      {/* Continue to Profile Button - Enabled only after Question 4 is answered */}
+                      {/* Next Question Button - Enabled only after Question 4 is answered */}
                       <div className="text-center w-full pt-2">
                         <button
                           disabled={!occasionPref}
-                          onClick={() => setCurrentStep('enter-name')}
+                          onClick={() => setSubQuestionIndex(4)}
                           className={`font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all inline-flex items-center justify-center gap-2 ${
                             occasionPref
+                              ? 'bg-[#18181B] hover:bg-[#27272A] text-white cursor-pointer hover:scale-105 active:scale-95'
+                              : 'bg-[#545459]/20 text-[#545459]/50 cursor-not-allowed pointer-events-none'
+                          }`}
+                          style={{ padding: '10px 30px' }}
+                        >
+                          <span>Next Question</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* QUESTION 5: AGE */}
+                  {subQuestionIndex === 4 && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8 sm:space-y-10">
+                      <div className="text-center space-y-1">
+                        <p className="text-base font-medium tracking-[-0.05em] text-[#545459]" style={{ fontSize: '16px' }}>
+                          Question 5 of 5
+                        </p>
+                        <h2 className="text-2xl sm:text-3xl lg:text-[38px] font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight" style={{ fontSize: '38px' }}>
+                          Berapa Usia Anda?
+                        </h2>
+                      </div>
+
+                      <div className="max-w-sm mx-auto space-y-6">
+                        <div className="relative">
+                          <User className="w-4 h-4 text-[#545459]/50 absolute left-4 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="number"
+                            min="10"
+                            max="100"
+                            required
+                            value={agePref}
+                            onChange={(e) => setAgePref(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && agePref) {
+                                setCurrentStep('enter-name');
+                              }
+                            }}
+                            placeholder="Contoh: 24"
+                            className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/60 focus:bg-white text-sm font-medium outline-none transition-all border border-[#545459]/20 focus:border-[#F6559C] focus:ring-2 focus:ring-[#F6559C]/20 text-[#545459]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Continue to Profile Button - Enabled only after Question 5 is answered */}
+                      <div className="text-center w-full pt-2">
+                        <button
+                          disabled={!agePref}
+                          onClick={() => setCurrentStep('enter-name')}
+                          className={`font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all inline-flex items-center justify-center gap-2 ${
+                            agePref
                               ? 'bg-[#18181B] hover:bg-[#27272A] text-white cursor-pointer hover:scale-105 active:scale-95'
                               : 'bg-[#545459]/20 text-[#545459]/50 cursor-not-allowed pointer-events-none'
                           }`}
@@ -1548,7 +1601,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                   <button
                     onClick={() => setCurrentStep('select-area')}
                     className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
-                    title="Kembali"
+                    title="Back"
                   >
                     <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
                   </button>
@@ -1631,7 +1684,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
               className="w-full"
             >
               <div
-                className="relative h-dvh bg-cover bg-center bg-no-repeat overflow-y-auto flex flex-col font-['Satoshi'] text-[#545459]"
+                className="relative h-dvh bg-cover bg-center bg-no-repeat lg:overflow-hidden overflow-y-auto flex flex-col font-['Satoshi'] text-[#545459]"
                 style={{ backgroundImage: "url('/image/Background-2.png')" }}
               >
                 {/* Glass overlay - fixed to cover full viewport during scroll */}
@@ -1640,32 +1693,40 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                 {/* Header */}
                 <div className="sticky top-0 left-0 w-full flex items-center justify-between z-30 px-6 sm:px-10 pt-4 pb-1 pointer-events-auto">
                   <button
-                    onClick={() => setCurrentStep('enter-name')}
+                    onClick={() => {
+                      if (showRecommendations) {
+                        setShowRecommendations(false);
+                      } else {
+                        setCurrentStep('enter-name');
+                      }
+                    }}
                     className="w-10 h-10 rounded-full bg-white/70 hover:bg-white text-[#545459] flex items-center justify-center shadow-xs transition-all cursor-pointer hover:scale-105"
-                    title="Kembali"
+                    title="Back"
                   >
                     <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
                   </button>
 
-                  <button
-                    onClick={() => setCurrentStep('recommendations')}
-                    className="flex items-center gap-2 bg-[#18181B] hover:bg-[#27272A] text-white font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-xs sm:text-sm px-5 sm:px-6 py-2.5 sm:py-3 shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
-                  >
-                    <Sparkles className="w-4 h-4 text-[#F6559C]" />
-                    <span>Lihat Rekomendasi Produk</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                  {!showRecommendations && (
+                    <button
+                      onClick={() => setShowRecommendations(true)}
+                      className="flex items-center gap-2 bg-[#18181B] hover:bg-[#27272A] text-white font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-xs sm:text-sm px-5 sm:px-6 py-2.5 sm:py-3 shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
+                    >
+                      <Sparkles className="w-4 h-4 text-[#F6559C]" />
+                      <span>View Product Recommendations</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Main Content */}
-                <div className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 pt-0 pb-8 space-y-4 sm:space-y-5">
+                <div className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 pt-0 pb-8 space-y-4 sm:space-y-5 lg:flex lg:flex-col lg:h-full lg:overflow-hidden">
 
                   {/* Page Title with Animated Entrance */}
                   <motion.div
                     initial={{ opacity: 0, y: -16 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, ease: 'easeOut' }}
-                    className="text-center space-y-0.5"
+                    className="text-center space-y-0.5 lg:shrink-0"
                   >
                     <p className="text-sm font-medium tracking-[-0.05em] text-[#545459]/70">AI Analysis Complete ✨</p>
                     <h2 className="text-2xl sm:text-3xl lg:text-4xl font-medium font-['Satoshi'] tracking-[-0.05em] text-[#545459] leading-tight">
@@ -1674,7 +1735,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                   </motion.div>
 
                   {/* Two-column layout with tight gap */}
-                  <div className="grid grid-cols-1 lg:grid-cols-[378px_1fr] gap-6 items-start">
+                  <div className="grid grid-cols-1 lg:grid-cols-[378px_1fr] gap-6 items-start lg:flex-1 lg:min-h-0">
 
                     {/* LEFT COLUMN: Selfie Card + Action Buttons with Animated Entrance */}
                     <motion.div
@@ -1710,14 +1771,14 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                         </div>
                       </div>
 
-                      {/* Scan Ulang & Share Buttons (Positioned right near the photo) */}
+                      {/* Scan Again & Share Buttons (Positioned right near the photo) */}
                       <div className="flex items-center gap-2.5 w-full max-w-[378px]">
                         <button
                           onClick={handleReset}
                           className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full bg-white/50 hover:bg-white/80 backdrop-blur-md border border-white/80 text-[#545459] text-xs font-medium shadow-xs transition-all cursor-pointer hover:scale-105 active:scale-95"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Scan Ulang</span>
+                          <span>Scan Again</span>
                         </button>
                         <button
                           onClick={triggerShare}
@@ -1730,17 +1791,156 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     </motion.div>
 
                     {/* RIGHT COLUMN: AI Diagnostic Stats with Staggered Animations */}
-                    <div className="space-y-4 min-w-0">
-                      {!scanResult ? (
-                        <div className="h-full flex items-center justify-center p-8 rounded-[28px] bg-white/50 backdrop-blur-md border border-white/80 shadow-xs">
-                          <div className="text-center space-y-3">
-                            <Loader2 className="w-8 h-8 animate-spin text-[#F6559C] mx-auto" />
-                            <p className="text-sm font-medium text-[#545459]">
-                              {isAnalyzing ? 'AI sedang menganalisis wajah Anda...' : 'Hasil tidak tersedia. Silakan scan ulang.'}
-                            </p>
+                    <div className="space-y-4 min-w-0 lg:h-full lg:overflow-y-auto lg:pr-2 lg:pb-12 scrollbar-thin scrollbar-thumb-zinc-200 scrollbar-track-transparent">
+                      {showRecommendations ? (
+                        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                          
+                          {/* AI Explanation Banner */}
+                          <div className="bg-[#FFF5F8] rounded-3xl p-5 sm:p-6 pr-32 sm:pr-48 flex flex-col justify-center border border-rose-50 shadow-sm relative overflow-hidden min-h-[140px] sm:min-h-[160px]">
+                            <div className="relative z-10">
+                              <h4 className="text-sm sm:text-base font-bold text-[#1D1B26] flex items-center gap-1.5 mb-2">
+                                <SparklesIconSolid className="w-5 h-5 text-[#F6559C]" /> Why these products?
+                              </h4>
+                              <p className="text-xs sm:text-sm text-[#61657A] font-medium leading-relaxed max-w-xl">
+                                {scanResult?.matchSummary || 'Our AI analyzed your skin, preferences, and concerns to recommend products that will enhance your natural beauty and solve your specific needs.'}
+                              </p>
+                            </div>
+                            
+                            {/* Chatbot Image - Absolute positioned at bottom right */}
+                            <div className="absolute right-0 bottom-0 w-36 h-36 sm:w-52 sm:h-52 z-10 translate-x-2 sm:translate-x-6 translate-y-2 sm:translate-y-4">
+                              <img src="/image/chatbot.png" alt="AI Bot" className="w-full h-full object-contain object-bottom drop-shadow-sm" />
+                            </div>
+                            
+                            {/* Decorative background glow for the robot */}
+                            <div className="absolute -right-4 bottom-0 w-48 h-48 bg-rose-200/40 rounded-full blur-3xl pointer-events-none" />
                           </div>
-                        </div>
+
+                          <div className="overflow-x-auto rounded-3xl border border-zinc-100 shadow-sm bg-white pt-5 pb-2 px-2">
+                            <div className="min-w-[700px]">
+                              <h3 className="text-xl font-black text-[#1D1B26] px-4 pb-4 font-['Satoshi'] tracking-[-0.03em]">Compare Products</h3>
+                              {/* Header Row: Product Info */}
+                              <div className="grid grid-cols-[140px_1fr_1fr_1fr] gap-4 p-4 border-b border-zinc-100 items-center">
+                                <div className="text-xs font-bold text-zinc-500">
+                                  Product
+                                </div>
+                                {getRelevantProducts().slice(0, 3).map((p) => (
+                                  <div key={p.id} className="relative bg-zinc-50/50 p-3 rounded-2xl flex items-center gap-3 shadow-xs border border-zinc-50">
+                                    {/* Removed X button per user request */}
+                                    <img src={p.imageUrl} alt={p.name} className="w-12 h-12 rounded-lg object-cover bg-white shadow-xs" />
+                                    <div className="flex-1 pr-5">
+                                      <h5 className="text-[10px] font-bold text-zinc-900 leading-tight">{p.brand}</h5>
+                                      <p className="text-[10px] text-zinc-500 font-medium line-clamp-2 leading-snug">{p.name}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Row 1: Overall Match */}
+                              <div className="grid grid-cols-[140px_1fr_1fr_1fr] gap-4 px-4 py-4 border-b border-zinc-100 items-center">
+                                <span className="font-bold text-zinc-900 text-sm">Overall Match</span>
+                                {getRelevantProducts().slice(0, 3).map((p, idx) => {
+                                  const score = 96 - (idx * 3);
+                                  return (
+                                    <div key={p.id} className="space-y-1.5 px-2">
+                                      <div className="text-xl font-black text-zinc-900">{score}%</div>
+                                      <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden">
+                                        <div className="bg-[#FF1493] h-full rounded-full" style={{ width: `${score}%` }} />
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Row 2: Category & Shade */}
+                              <div className="grid grid-cols-[140px_1fr_1fr_1fr] gap-4 px-4 py-4 border-b border-zinc-100 text-xs items-center">
+                                <span className="text-zinc-500 font-medium">Category & Shade</span>
+                                {getRelevantProducts().slice(0, 3).map((p) => (
+                                  <div key={p.id} className="text-zinc-700 font-medium px-2">
+                                    <span className="font-bold text-[#FF1493] uppercase text-[10px] block">{p.category}</span>
+                                    <span>{p.shade || 'Medium Warm Nude'}</span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Row 3: Suitable For */}
+                              <div className="grid grid-cols-[140px_1fr_1fr_1fr] gap-4 px-4 py-4 border-b border-zinc-100 text-xs items-center">
+                                <span className="text-zinc-500 font-medium">Suitable For</span>
+                                {getRelevantProducts().slice(0, 3).map((p) => (
+                                  <div key={p.id} className="text-zinc-700 font-medium px-2">
+                                    {p.suitableSkinTypes?.length > 0 ? p.suitableSkinTypes.join(', ') : 'All Skin Types'}
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Row 4: Targeted Concerns */}
+                              <div className="grid grid-cols-[140px_1fr_1fr_1fr] gap-4 px-4 py-4 border-b border-zinc-100 text-xs items-center">
+                                <span className="text-zinc-500 font-medium">Targeted Concerns</span>
+                                {getRelevantProducts().slice(0, 3).map((p) => (
+                                  <div key={p.id} className="text-zinc-700 font-medium px-2 line-clamp-2">
+                                    {p.targetsConcerns?.length > 0 ? p.targetsConcerns.join(', ') : 'Basic Care'}
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Row 5: Finish & Formulation */}
+                              <div className="grid grid-cols-[140px_1fr_1fr_1fr] gap-4 px-4 py-4 border-b border-zinc-100 text-xs items-center">
+                                <span className="text-zinc-500 font-medium">Finish & Formulation</span>
+                                {getRelevantProducts().slice(0, 3).map((p) => (
+                                  <div key={p.id} className="text-zinc-700 font-medium px-2">
+                                    {p.category === 'Lipstick' ? 'Velvet Satin Finish • Hydrating' : p.category === 'Cushion' ? 'Dewy Glow • SPF 50+ PA++++' : 'Lightweight Longwear Formula'}
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Row 6: Ingredients */}
+                              <div className="grid grid-cols-[140px_1fr_1fr_1fr] gap-4 px-4 py-4 border-b border-zinc-100 text-xs items-center">
+                                <span className="text-zinc-500 font-medium">Ingredients</span>
+                                {getRelevantProducts().slice(0, 3).map((p) => (
+                                  <div key={p.id} className="text-zinc-700 font-medium px-2 line-clamp-2">
+                                    {p.affiliatorNote || (['Lipstick', 'Lip Tint', 'Lip Gloss', 'Lip Balm'].includes(p.category) ? 'Shea Butter, Vitamin E, Jojoba Oil' : 'Hyaluronic Acid, Niacinamide, Glycerin')}
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Row 7: Official Price */}
+                              <div className="grid grid-cols-[140px_1fr_1fr_1fr] gap-4 px-4 py-4 border-b border-zinc-100 text-xs items-center">
+                                <span className="text-zinc-500 font-medium">Official Price</span>
+                                {getRelevantProducts().slice(0, 3).map((p) => (
+                                  <div key={p.id} className="font-black text-zinc-900 px-2 text-sm">
+                                    Rp {p.price.toLocaleString('id-ID')}
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Row 8: Buy Action */}
+                              <div className="grid grid-cols-[140px_1fr_1fr_1fr] gap-4 px-4 py-4 text-xs items-center">
+                                <span className="font-bold text-zinc-500">Action</span>
+                                {getRelevantProducts().slice(0, 3).map((p) => (
+                                  <div key={p.id} className="px-2">
+                                    <Button
+                                      onClick={() => handleAffiliateClick(p)}
+                                      variant="dark"
+                                      size="sm"
+                                      className="w-full text-[11px] py-2 font-bold shadow-xs bg-[#1D1B26] hover:bg-zinc-800 text-white rounded-full border-0"
+                                    >
+                                      {getAffiliateButtonText(p.affiliateUrl)}
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
                       ) : (
+                        <>
+                          {!scanResult ? (
+                            <div className="h-full min-h-[400px] flex flex-col items-center justify-center p-8 rounded-[32px] bg-white/60 backdrop-blur-xl border border-white shadow-sm relative overflow-hidden">
+                              <Loader2 className="w-8 h-8 animate-spin text-[#F6559C] mb-4" />
+                              <p className="text-[#545459] font-medium font-['Satoshi'] tracking-[-0.03em]">
+                                Curating your personal beauty recommendations...
+                              </p>
+                            </div>
+                          ) : (
                         <>
                           {/* 1. Overall Skin Score (Animated Gauge & Counter with 1.2s delay) */}
                           {(() => {
@@ -1905,9 +2105,11 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                             className="p-5 rounded-[22px] bg-white/50 backdrop-blur-md border border-white/80 shadow-xs"
                           >
                             <p className="text-xs sm:text-sm text-[#545459] leading-relaxed">
-                              Kulit <strong className="text-[#18181B]">{customerName || 'Anda'}</strong> tergolong <strong className="text-[#F6559C]">{scanResult.personalColor} {scanResult.undertone}</strong> dengan kontur wajah {scanResult.faceShape}. {scanResult.matchSummary || `Rekomendasi produk telah disesuaikan dengan skin tone ${scanResult.skinTone} Anda.`}
+                              Skin <strong className="text-[#18181B]">{customerName || 'You'}</strong> is classified as <strong className="text-[#F6559C]">{scanResult.personalColor} {scanResult.undertone}</strong> with a {scanResult.faceShape} face shape. {scanResult.matchSummary || `Product recommendations have been tailored to your ${scanResult.skinTone} skin tone.`}
                             </p>
                           </motion.div>
+                        </>
+                      )}
                         </>
                       )}
                     </div>
@@ -1918,364 +2120,6 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
             </motion.div>
           )}
 
-          {/* STEP 5: CURATED RECOMMENDED PRODUCTS & COMPARISON PAGE */}
-          {currentStep === 'recommendations' && (
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
-              
-              {/* Header Bar for Recommendations */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl shadow-xs border border-zinc-100">
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => setCurrentStep('result')}
-                    className="p-3 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 cursor-pointer transition-all flex items-center gap-1.5 text-xs font-bold"
-                    title="Kembali ke Hasil Analisis"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                    <span>Kembali ke Hasil</span>
-                  </button>
-
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xl sm:text-2xl font-black text-zinc-950">
-                        Rekomendasi Produk Kurasi {creator.name}
-                      </h2>
-                      <Badge variant="primary" className="text-[10px]">
-                        STEP 5
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-zinc-500 font-medium mt-0.5">
-                      Dipersonalisasi khusus untuk <strong className="text-zinc-900">{customerName || 'Anda'}</strong> berdasarkan pemindaian AI.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <Badge variant="success" className="text-xs px-3.5 py-1.5 font-bold">
-                    {getRelevantProducts().length} Produk Rekomendasi Fit
-                  </Badge>
-                  {compareIds.length > 0 && (
-                    <button
-                      onClick={() => setIsCompareModalOpen(true)}
-                      className="text-xs font-bold bg-[#FF73B6]/10 text-[#FF73B6] hover:bg-[#FF73B6]/20 px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <GitCompare className="w-3.5 h-3.5" />
-                      <span>Komparasi ({compareIds.length})</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* CURATED RECOMMENDED AFFILIATE PRODUCTS - DESIGN MATCHING USER REFERENCE */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {getRelevantProducts().map((prod, idx) => (
-                  <Card key={prod.id} className="p-3 bg-white flex flex-col justify-between rounded-[28px] border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
-                    
-                    <div>
-                      {/* TOP SECTION: IMAGE CONTAINER WITH TIGHT COMPACT PADDING & MATCHING RADIUS */}
-                      <div className="relative aspect-[4/3] sm:aspect-square w-full rounded-[22px] overflow-hidden bg-zinc-50 border border-zinc-100/80 shrink-0">
-                        <img 
-                          src={prod.imageUrl} 
-                          alt={prod.name} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                        />
-                        
-                        {/* Top-Left: AI Match Badge */}
-                        <div className="absolute top-2.5 left-2.5 bg-zinc-950/80 backdrop-blur-md text-white px-2.5 py-1 rounded-full text-[10px] font-black tracking-wide flex items-center gap-1 shadow-xs">
-                          <Sparkles className="w-3 h-3 text-[#FF73B6]" />
-                          <span>{96 + (idx % 4)}% MATCH</span>
-                        </div>
-
-                        {/* Top-Right: Wishlist / Heart Icon Button */}
-                        <button
-                          onClick={() => toggleCompareProduct(prod.id)}
-                          className={`absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-white/80 backdrop-blur-md flex items-center justify-center transition-all shadow-xs cursor-pointer ${
-                            compareIds.includes(prod.id) 
-                              ? 'text-rose-500 bg-white' 
-                              : 'text-zinc-600 hover:bg-white hover:text-rose-500'
-                          }`}
-                          title={compareIds.includes(prod.id) ? 'Dihapus dari komparasi' : 'Tambah ke wishlist / komparasi'}
-                        >
-                          <Heart className={`w-3.5 h-3.5 ${compareIds.includes(prod.id) ? 'fill-rose-500 text-rose-500' : ''}`} />
-                        </button>
-                      </div>
-
-                      {/* MIDDLE CONTENT: PRODUCT INFORMATION WITH MATCHING COMPACT ALIGNMENT */}
-                      <div className="mt-3 px-1 space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">{prod.brand}</span>
-                          <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">
-                            ★ 4.9
-                          </span>
-                        </div>
-
-                        <h4 className="text-sm sm:text-base font-bold text-zinc-900 leading-snug line-clamp-1 group-hover:text-[#FF73B6] transition-colors">
-                          {prod.name}
-                        </h4>
-                        
-                        <p className="text-xs text-zinc-400 font-normal line-clamp-2 leading-relaxed">
-                          {prod.affiliatorNote ? `"${prod.affiliatorNote}"` : 'Produk formula terbaik untuk rekomendasi warna kulit dan bibir Anda.'}
-                        </p>
-
-                        {/* Shade & Fit Pill */}
-                        <div className="pt-1 flex flex-wrap items-center gap-1.5">
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-zinc-50 border border-zinc-100 text-zinc-700 rounded-lg text-[11px] font-medium">
-                            <span className="w-2 h-2 rounded-full bg-[#E88880] shrink-0" />
-                            <span>Shade: {prod.shade || 'Medium Warm Nude'}</span>
-                          </div>
-                        </div>
-
-                        {/* Explainable AI Match Reasons (PRD Feature 4) */}
-                        <div className="pt-1.5 flex flex-wrap gap-1">
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100/60">
-                            ✓ {selectedArea === 'bibir' ? 'Cool Lip Tone' : 'Cool Undertone'}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-[10px] font-bold border border-purple-100/60">
-                            ✓ {finishPref}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md bg-pink-50 text-pink-700 text-[10px] font-bold border border-pink-100/60">
-                            ✓ {budgetPref}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* BOTTOM ROW: PRICE & DARK PILL BUY BUTTON */}
-                    <div className="mt-4 pt-3 px-1 flex items-center justify-between border-t border-zinc-100/80 gap-2">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-base sm:text-lg font-bold text-zinc-900">${prod.price}</span>
-                        <span className="text-xs text-zinc-400 line-through">${prod.price + 5}</span>
-                      </div>
-
-                      <Button
-                        onClick={() => handleAffiliateClick(prod)}
-                        variant="dark"
-                        size="md"
-                        className="bg-[#1D1B26] hover:bg-zinc-800 text-white rounded-full px-5 py-2 text-xs sm:text-sm font-semibold transition-all shadow-xs border-0"
-                      >
-                        Buy
-                      </Button>
-                    </div>
-
-                  </Card>
-                ))}
-              </div>
-
-              {/* Bottom Actions: Share or Retake or Back to Analysis */}
-              <div className="pt-4 flex flex-col sm:flex-row gap-4">
-                <Button
-                  onClick={() => setCurrentStep('result')}
-                  variant="outline"
-                  size="lg"
-                  icon={<ChevronLeft className="w-5 h-5" />}
-                  className="bg-white py-4 text-sm font-bold"
-                >
-                  Kembali ke Hasil Analisis
-                </Button>
-
-                <Button
-                  onClick={triggerShare}
-                  variant="dark"
-                  size="lg"
-                  icon={<Share2 className="w-5 h-5" />}
-                  className="flex-1 py-4 text-sm font-bold shadow-lg"
-                >
-                  Bagikan Rekomendasi
-                </Button>
-
-                <Button
-                  onClick={handleReset}
-                  variant="outline"
-                  size="lg"
-                  icon={<RotateCcw className="w-5 h-5" />}
-                  className="bg-white py-4 text-sm font-bold"
-                >
-                  Pemindaian Baru
-                </Button>
-              </div>
-
-            </motion.div>
-          )}
-
-      {/* FLOATING COMPARE BAR (BOTTOM DOCK) */}
-      {currentStep === 'recommendations' && compareIds.length > 0 && (
-        <motion.div
-          initial={{ y: 80, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 80, opacity: 0 }}
-          className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 bg-zinc-950/90 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-2xl border border-zinc-800 flex items-center gap-4 max-w-md w-[92%]"
-        >
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[#FF73B6] text-white flex items-center justify-center shrink-0 shadow-md">
-              <GitCompare className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-black truncate">Komparasi Produk AI</p>
-              <p className="text-[10px] text-zinc-400 font-medium">{compareIds.length} dari maks 3 produk dipilih</p>
-            </div>
-          </div>
-
-          <Button
-            onClick={() => setIsCompareModalOpen(true)}
-            variant="primary"
-            size="sm"
-            className="text-xs font-bold py-2.5 px-4 shrink-0 shadow-md"
-          >
-            Buka Komparasi →
-          </Button>
-        </motion.div>
-      )}
-
-      {/* MODAL OVERLAY KOMPARASI PRODUK */}
-      {isCompareModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0, y: 15 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 15 }}
-            className="bg-white text-zinc-950 rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-zinc-100"
-          >
-            {/* Modal Header */}
-            <div className="p-5 sm:p-6 border-b border-zinc-100 flex items-center justify-between bg-white shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#FF73B6]/10 text-[#FF73B6] flex items-center justify-center shrink-0">
-                  <GitCompare className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-black text-zinc-950">Komparasi Produk Head-to-Head</h3>
-                  <p className="text-xs text-zinc-500 font-medium">Bandingkan detail formula, finish & kecocokan tone</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsCompareModalOpen(false)}
-                className="p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-600 cursor-pointer transition-all"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Content Table */}
-            <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
-              {compareIds.length === 0 ? (
-                <div className="p-8 text-center bg-zinc-50 border-dashed border-2 border-zinc-200 rounded-3xl space-y-2">
-                  <GitCompare className="w-8 h-8 text-zinc-400 mx-auto" />
-                  <p className="text-sm font-bold text-zinc-700">Belum ada produk yang dipilih.</p>
-                  <p className="text-xs text-zinc-500">Klik "+ Bandingkan" pada kartu produk rekomendasi untuk memilih produk.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <div className="min-w-[580px]">
-                    {/* Header Row: Product Info */}
-                    <div className="grid grid-cols-4 gap-4 pb-4 border-b border-zinc-100 items-end">
-                      <div className="text-xs font-black text-zinc-400 uppercase tracking-wider">
-                        Spesifikasi
-                      </div>
-                      {products.filter(p => compareIds.includes(p.id)).map((p) => (
-                        <div key={p.id} className="space-y-2 text-center relative bg-zinc-50 p-3 rounded-2xl border border-zinc-100">
-                          <button
-                            onClick={() => toggleCompareProduct(p.id)}
-                            className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-zinc-200 hover:bg-rose-500 hover:text-white text-zinc-600 flex items-center justify-center transition-all cursor-pointer z-10 shadow-xs"
-                            title="Hapus dari komparasi"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                          <img src={p.imageUrl} alt={p.name} className="w-16 h-16 rounded-xl object-cover mx-auto shadow-xs" />
-                          <div>
-                            <h5 className="text-xs font-bold text-zinc-900 line-clamp-1">{p.name}</h5>
-                            <p className="text-[10px] text-zinc-400 font-semibold">{p.brand}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Row 1: Match AI */}
-                    <div className="grid grid-cols-4 gap-4 py-3 border-b border-zinc-100 text-xs items-center">
-                      <span className="font-bold text-zinc-500">Skor Match AI</span>
-                      {products.filter(p => compareIds.includes(p.id)).map((p, idx) => (
-                        <div key={p.id} className="text-center font-black text-emerald-600 bg-emerald-50 py-1.5 rounded-xl border border-emerald-100">
-                          {96 + idx}% MATCH FIT
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Row 2: Price */}
-                    <div className="grid grid-cols-4 gap-4 py-3 border-b border-zinc-100 text-xs items-center">
-                      <span className="font-bold text-zinc-500">Harga Resmi</span>
-                      {products.filter(p => compareIds.includes(p.id)).map((p) => (
-                        <div key={p.id} className="text-center font-black text-zinc-950 text-sm">
-                          ${p.price}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Row 3: Category & Shade */}
-                    <div className="grid grid-cols-4 gap-4 py-3 border-b border-zinc-100 text-xs items-center">
-                      <span className="font-bold text-zinc-500">Kategori & Shade</span>
-                      {products.filter(p => compareIds.includes(p.id)).map((p) => (
-                        <div key={p.id} className="text-center font-semibold text-zinc-700 bg-zinc-50 p-2 rounded-xl">
-                          <span className="block font-bold text-[#FF73B6] text-[10px] uppercase">{p.category}</span>
-                          <span>{p.shade || 'Medium Warm Nude'}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Row 4: Finish & Formula */}
-                    <div className="grid grid-cols-4 gap-4 py-3 border-b border-zinc-100 text-xs items-center">
-                      <span className="font-bold text-zinc-500">Finish & Formulasi</span>
-                      {products.filter(p => compareIds.includes(p.id)).map((p) => (
-                        <div key={p.id} className="text-center text-zinc-700 font-medium">
-                          {p.category === 'Lipstick' ? 'Velvet Satin Finish • Hydrating' : p.category === 'Cushion' ? 'Dewy Glow • SPF 50+ PA++++' : 'Lightweight Longwear Formula'}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Row 5: Affiliator Note */}
-                    <div className="grid grid-cols-4 gap-4 py-3 border-b border-zinc-100 text-xs items-center">
-                      <span className="font-bold text-zinc-500">Catatan Rekomendasi</span>
-                      {products.filter(p => compareIds.includes(p.id)).map((p) => (
-                        <div key={p.id} className="text-center text-zinc-600 italic text-[11px] p-2 bg-zinc-50/60 rounded-xl">
-                          "{p.affiliatorNote || 'Sangat direkomendasikan untuk pemakaian harian.'}"
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Row 6: Buy Action */}
-                    <div className="grid grid-cols-4 gap-4 pt-4 text-xs items-center">
-                      <span className="font-bold text-zinc-500">Aksi Pembelian</span>
-                      {products.filter(p => compareIds.includes(p.id)).map((p) => (
-                        <div key={p.id} className="text-center">
-                          <Button
-                            onClick={() => handleAffiliateClick(p)}
-                            variant="primary"
-                            size="sm"
-                            className="w-full text-[11px] py-2 font-extrabold shadow-sm"
-                          >
-                            Beli Produk →
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500">
-              <span className="font-medium">Menampilkan {compareIds.length} dari max 3 produk</span>
-              <Button
-                onClick={() => setIsCompareModalOpen(false)}
-                variant="outline"
-                size="sm"
-                className="bg-white font-bold"
-              >
-                Tutup Komparasi
-              </Button>
-            </div>
-
-          </motion.div>
-        </div>
-      )}
 
         </section>
 

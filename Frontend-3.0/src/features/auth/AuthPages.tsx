@@ -10,9 +10,10 @@ interface AuthPagesProps {
   initialView: 'login' | 'register' | 'forgot-password';
   onNavigate: (route: RouteView) => void;
   onSuccess?: () => void;
-  onLoginAs?: (email: string, password: string) => void;
+  onLoginAs?: (email: string, password: string) => Promise<{ requires2FA?: boolean; userId?: string } | void>;
+  onVerify2FA?: (userId: string, token: string) => Promise<void>;
   onRegister?: (email: string, password: string, name: string) => void;
-  onGoogleLogin?: (idToken: string) => void;
+  onGoogleLogin?: (idToken: string) => Promise<{ requires2FA?: boolean; userId?: string } | void>;
 }
 
 export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, onSuccess, onLoginAs, onRegister, onGoogleLogin }) => {
@@ -22,6 +23,10 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
   const [name, setName] = useState('Kate Jenkins');
   const [isLoading, setIsLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [twoFactorToken, setTwoFactorToken] = useState('');
+  const [twoFactorUserId, setTwoFactorUserId] = useState('');
+  const [authError, setAuthError] = useState('');
 
   const passwordRules = [
     { label: 'Minimal 8 karakter', ok: password.length >= 8 },
@@ -44,7 +49,23 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
       if (window.google && googleButtonRef.current) {
         window.google.accounts.id.initialize({
           client_id: googleClientId,
-          callback: (response) => onGoogleLogin(response.credential),
+          callback: async (response) => {
+            if (onGoogleLogin) {
+              setIsLoading(true);
+              try {
+                const result = await onGoogleLogin(response.credential);
+                if (result && result.requires2FA) {
+                  setAuthMode('login');
+                  setRequires2FA(true);
+                  setTwoFactorUserId(result.userId!);
+                }
+              } catch (e) {
+                // error handled in store
+              } finally {
+                setIsLoading(false);
+              }
+            }
+          },
         });
         googleButtonRef.current.innerHTML = '';
         window.google.accounts.id.renderButton(googleButtonRef.current, {
@@ -66,14 +87,16 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
     };
   }, [authMode, googleClientId, onGoogleLogin]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
       if (authMode === 'forgot-password') {
-        setResetSent(true);
+        setTimeout(() => {
+          setResetSent(true);
+          setIsLoading(false);
+        }, 800);
       } else if (authMode === 'register') {
         if (onRegister) {
           onRegister(email, password, name);
@@ -81,15 +104,38 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
           if (onSuccess) onSuccess();
           onNavigate('dashboard');
         }
+        setIsLoading(false);
       } else {
+        if (requires2FA && onVerify2FA) {
+          try {
+            await onVerify2FA(twoFactorUserId, twoFactorToken);
+            setIsLoading(false);
+            return;
+          } catch (e) {
+            setAuthError('Invalid 2FA code. Please try again.');
+            setIsLoading(false);
+            return;
+          }
+        }
+
         if (onLoginAs) {
-          onLoginAs(email, password);
+          const result = await onLoginAs(email, password);
+          if (result && result.requires2FA) {
+            setRequires2FA(true);
+            setTwoFactorUserId(result.userId!);
+            setIsLoading(false);
+            return;
+          }
         } else {
           if (onSuccess) onSuccess();
           onNavigate('dashboard');
         }
+        setIsLoading(false);
       }
-    }, 800);
+    } catch (e) {
+      setAuthError('Invalid credentials. Please try again.');
+      setIsLoading(false);
+    }
   };
 
   const handleQuickAdminLogin = () => {
@@ -126,12 +172,14 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
           {/* Header titles */}
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-zinc-900">
-              {authMode === 'login' && 'Welcome Back'}
+              {authMode === 'login' && !requires2FA && 'Welcome Back'}
+              {authMode === 'login' && requires2FA && 'Two-Factor Authentication'}
               {authMode === 'register' && 'Start Your 14-Day Free Trial'}
               {authMode === 'forgot-password' && 'Reset Your Password'}
             </h2>
             <p className="text-xs text-zinc-500 mt-1">
-              {authMode === 'login' && 'Sign in to access your BeautyAI Affiliator dashboard.'}
+              {authMode === 'login' && !requires2FA && 'Sign in to access your BeautyAI Affiliator dashboard.'}
+              {authMode === 'login' && requires2FA && 'Enter the 6-digit code from your authenticator app.'}
               {authMode === 'register' && 'Create your account to start converting followers with AI.'}
               {authMode === 'forgot-password' && 'Enter your registered email address.'}
             </p>
@@ -152,121 +200,113 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
-              
-              {authMode === 'register' && (
+              {requires2FA && authMode === 'login' ? (
                 <Input
-                  label="Full Name"
-                  placeholder="e.g. Kate Jenkins"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  icon={<User className="w-4 h-4 text-zinc-400" />}
+                  label="Authentication Code"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="Enter 6-digit code"
+                  value={twoFactorToken}
+                  onChange={(e) => { setTwoFactorToken(e.target.value); setAuthError(''); }}
+                  icon={<ShieldCheck className="w-4 h-4 text-zinc-400" />}
+                  error={authError}
                   required
                 />
-              )}
+              ) : (
+                <>
+                  {authMode === 'register' && (
+                    <Input
+                      label="Full Name"
+                      placeholder="e.g. Kate Jenkins"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      icon={<User className="w-4 h-4 text-zinc-400" />}
+                      required
+                    />
+                  )}
 
-              <Input
-                label="Email Address"
-                type="email"
-                placeholder="kate@auraai.local"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                icon={<Mail className="w-4 h-4 text-zinc-400" />}
-                required
-              />
-
-              {authMode !== 'forgot-password' && (
-                <div className="space-y-2">
                   <Input
-                    label="Password"
-                    type="password"
-                    placeholder="••••••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    icon={<Lock className="w-4 h-4 text-zinc-400" />}
+                    label="Email Address"
+                    type="email"
+                    placeholder="kate@auraai.local"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); setAuthError(''); }}
+                    icon={<Mail className="w-4 h-4 text-zinc-400" />}
                     required
                   />
-                  {authMode === 'register' && (
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1">
-                      {passwordRules.map((rule) => (
-                        <div
-                          key={rule.label}
-                          className={`flex items-center gap-1.5 text-[11px] font-medium transition-colors ${
-                            rule.ok ? 'text-emerald-600' : 'text-zinc-400'
-                          }`}
-                        >
-                          <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${rule.ok ? 'text-emerald-500' : 'text-zinc-300'}`} />
-                          <span>{rule.label}</span>
+
+                  {authMode !== 'forgot-password' && (
+                    <div className="space-y-2">
+                      <Input
+                        label="Password"
+                        type="password"
+                        placeholder="••••••••••••"
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); setAuthError(''); }}
+                        icon={<Lock className="w-4 h-4 text-zinc-400" />}
+                        error={authError}
+                        required
+                        className={authMode === 'register' && password && !isPasswordValid ? 'border-red-300 focus:ring-red-200' : ''}
+                      />
+                      {authMode === 'register' && password && (
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1">
+                          {passwordRules.map((rule) => (
+                            <div
+                              key={rule.label}
+                              className={`flex items-center gap-1.5 text-[11px] font-medium transition-colors ${
+                                rule.ok ? 'text-emerald-600' : 'text-zinc-400'
+                              }`}
+                            >
+                              <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${rule.ok ? 'text-emerald-500' : 'text-zinc-300'}`} />
+                              <span>{rule.label}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
-                </div>
-              )}
 
-              {authMode === 'login' && (
-                <div className="flex justify-between items-center text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer text-zinc-600">
-                    <input type="checkbox" defaultChecked className="rounded border-zinc-300 text-[#F26CA7]" />
-                    <span>Remember me</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setAuthMode('forgot-password')}
-                    className="text-[#F26CA7] font-semibold hover:underline"
-                  >
-                    Forgot Password?
-                  </button>
-                </div>
+                  {authMode === 'login' && (
+                    <div className="flex justify-between items-center text-xs mt-2">
+                      <label className="flex items-center gap-2 cursor-pointer text-zinc-600">
+                        <input type="checkbox" defaultChecked className="rounded border-zinc-300 text-[#F26CA7]" />
+                        <span>Remember me</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setAuthMode('forgot-password')}
+                        className="text-[#F26CA7] font-semibold hover:underline"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
 
               <Button
                 type="submit"
-                variant="primary"
-                size="lg"
-                isLoading={isLoading}
-                disabled={authMode === 'register' && !isPasswordValid}
-                className="w-full mt-2"
+                className="w-full h-12 bg-zinc-900 hover:bg-zinc-700 text-white font-medium transition-colors"
+                disabled={isLoading || (authMode === 'register' && !isPasswordValid) || (requires2FA && twoFactorToken.length < 6)}
               >
-                {authMode === 'login' && 'Sign In to Dashboard'}
-                {authMode === 'register' && 'Create Account & Launch'}
-                {authMode === 'forgot-password' && 'Send Reset Link'}
+                {isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Please wait...</span>
+                  </div>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    {requires2FA ? 'Verify Code' : authMode === 'login' ? 'Sign In' : authMode === 'register' ? 'Create Account' : 'Send Reset Link'}
+                    <ArrowRight className="w-4 h-4" />
+                  </span>
+                )}
               </Button>
             </form>
           )}
 
-          {/* Quick Demo Credentials Switcher */}
-          {authMode === 'login' && (
-            <div className="mt-4 p-3 bg-zinc-50 border border-zinc-200 rounded-2xl text-center space-y-2">
-              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Quick Demo Login Selector</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setEmail('kate@auraai.local'); setPassword('Affiliator123!'); }}
-                  className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                    email === 'kate@auraai.local'
-                      ? 'bg-[#F26CA7] text-white shadow-xs'
-                      : 'bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-100'
-                  }`}
-                >
-                  Affiliator Demo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEmail('admin@auraai.local'); setPassword('Admin123!'); }}
-                  className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                    email === 'admin@auraai.local'
-                      ? 'bg-zinc-900 text-white shadow-xs'
-                      : 'bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-100'
-                  }`}
-                >
-                  Admin Demo
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Social Sign-In */}
-          {authMode !== 'forgot-password' && (
+          {authMode !== 'forgot-password' && !requires2FA && (
             <div className="mt-5 pt-5 border-t border-zinc-100 text-center space-y-3">
               <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Or continue with</p>
 
@@ -286,30 +326,40 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
             </div>
           )}
 
-          {/* Mode Switcher Footer */}
-          <div className="mt-6 text-center text-xs text-zinc-500">
-            {authMode === 'login' ? (
-              <p>
-                Don't have an account?{' '}
-                <button
-                  onClick={() => setAuthMode('register')}
-                  className="text-[#F26CA7] font-bold hover:underline"
-                >
-                  Sign Up Free
-                </button>
-              </p>
-            ) : (
-              <p>
-                Already have an account?{' '}
-                <button
-                  onClick={() => setAuthMode('login')}
-                  className="text-[#F26CA7] font-bold hover:underline"
-                >
-                  Sign In
-                </button>
-              </p>
+            {!requires2FA && (
+              <div className="mt-6 text-center text-sm text-zinc-600">
+                {authMode === 'login' ? (
+                  <p>
+                    Don't have an account?{' '}
+                    <button onClick={() => setAuthMode('register')} className="text-[#FF3366] font-medium hover:underline">
+                      Sign up
+                    </button>
+                  </p>
+                ) : authMode === 'register' ? (
+                  <p>
+                    Already have an account?{' '}
+                    <button onClick={() => setAuthMode('login')} className="text-[#FF3366] font-medium hover:underline">
+                      Sign in
+                    </button>
+                  </p>
+                ) : (
+                  <p>
+                    Remember your password?{' '}
+                    <button onClick={() => setAuthMode('login')} className="text-[#FF3366] font-medium hover:underline">
+                      Sign in
+                    </button>
+                  </p>
+                )}
+              </div>
             )}
-          </div>
+
+            {requires2FA && (
+              <div className="mt-6 text-center text-sm text-zinc-600">
+                <button onClick={() => setRequires2FA(false)} className="text-[#FF3366] font-medium hover:underline">
+                  Cancel login
+                </button>
+              </div>
+            )}
 
         </Card>
 

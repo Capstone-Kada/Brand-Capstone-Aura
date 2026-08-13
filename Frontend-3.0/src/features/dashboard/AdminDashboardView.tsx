@@ -30,10 +30,11 @@ import {
   ExternalLink,
   ChevronRight,
   Camera,
-  Link2
+  Link2,
+  Upload
 } from 'lucide-react';
 import { Product, AffiliatorAccount, SkinTone, Undertone, SkinType, SkinConcern } from '../../types';
-import { Card, Button, Input, Badge, Avatar } from '../../components/ui/UIComponents';
+import { Card, Button, Input, Badge, Avatar, Modal } from '../../components/ui/UIComponents';
 
 const ProductThumb: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className = '' }) => {
   const [loaded, setLoaded] = useState(false);
@@ -58,6 +59,8 @@ interface AdminDashboardViewProps {
   onDeleteProduct: (id: string) => void;
   onUpdateAffiliatorStatus: (id: string, status: AffiliatorAccount['status']) => void;
   onUpdateAffiliator?: (id: string, updated: Partial<AffiliatorAccount>) => void;
+  onDeleteAffiliator?: (id: string) => void;
+  onUpdateProductApproval?: (id: string, status: 'Approved' | 'Rejected') => void;
   activeTab?: 'overview' | 'products' | 'affiliators' | 'analytics';
   onNavigateTab?: (tab: 'overview' | 'products' | 'affiliators' | 'analytics') => void;
 }
@@ -70,6 +73,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onDeleteProduct,
   onUpdateAffiliatorStatus,
   onUpdateAffiliator,
+  onDeleteAffiliator,
+  onUpdateProductApproval,
   activeTab = 'overview',
   onNavigateTab
 }) => {
@@ -88,6 +93,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   // Product modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [rejectingProductId, setRejectingProductId] = useState<string | null>(null);
+  const [productSubTab, setProductSubTab] = useState<'active' | 'requests'>('active');
+  const [adminImageUploadType, setAdminImageUploadType] = useState<'url' | 'file'>('url');
   
   // Product Search & Filter
   const [productSearch, setProductSearch] = useState('');
@@ -101,6 +109,23 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&q=80&w=600');
   const [affiliateUrl, setAffiliateUrl] = useState('https://amzn.to/example_master');
   const [shade, setShade] = useState('Universal');
+
+  const handleAdminFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size exceeds 5MB limit');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setImageUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Affiliator Search & Filter
   const [affiliatorSearch, setAffiliatorSearch] = useState('');
@@ -225,7 +250,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setIsAddModalOpen(false);
   };
 
-  const filteredProducts = products.filter(p => {
+  const pendingProducts = products.filter((p) => p.approvalStatus === 'Pending');
+  const activeProducts = products.filter((p) => p.approvalStatus !== 'Pending' && p.approvalStatus !== 'Rejected');
+
+  const filteredProducts = activeProducts.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.brand.toLowerCase().includes(productSearch.toLowerCase());
     const matchesCat = categoryFilter === 'All' || p.category === categoryFilter;
     return matchesSearch && matchesCat;
@@ -423,6 +451,33 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </div>
           </Card>
 
+          {/* Pending Approvals Alert */}
+          {products.filter((p) => p.approvalStatus === 'Pending').length > 0 && (
+            <Card className="p-4 border-amber-200 bg-amber-50/60">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">⏳</span>
+                  <div>
+                    <p className="text-sm font-bold text-amber-900">
+                      {products.filter((p) => p.approvalStatus === 'Pending').length} Product(s) Awaiting Approval
+                    </p>
+                    <p className="text-xs text-amber-700">Affiliators have submitted custom products that need your review.</p>
+                  </div>
+                </div>
+                <Button 
+                  onClick={() => {
+                    setProductSubTab('requests');
+                    setTab('products');
+                  }} 
+                  variant="outline" 
+                  size="sm"
+                >
+                  Review Now →
+                </Button>
+              </div>
+            </Card>
+          )}
+
           {/* Quick Master Product Overview */}
           <Card className="p-6 space-y-4">
             <div className="flex justify-between items-center">
@@ -443,7 +498,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{prod.brand}</span>
                     <h4 className="text-xs font-bold text-zinc-900 truncate">{prod.name}</h4>
                     <div className="flex items-center justify-between mt-1">
-                      <span className="text-xs font-extrabold text-[var(--primary)]">${prod.price.toFixed(2)}</span>
+                      <span className="text-xs font-extrabold text-[var(--primary)]">Rp {prod.price.toLocaleString('id-ID')}</span>
                       <Badge variant="outline" size="sm">{prod.category}</Badge>
                     </div>
                   </div>
@@ -460,46 +515,181 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-bold text-zinc-900">Master Products Catalog</h2>
-              <p className="text-xs text-zinc-500">Admin-managed central database of beauty & skincare items.</p>
+              <h2 className="text-xl font-bold text-zinc-900">Master Products</h2>
+              <p className="text-xs text-zinc-500">Kelola katalog master dan review pengajuan produk manual dari affiliator.</p>
             </div>
 
-            <Button onClick={handleOpenAddModal} variant="primary" icon={<Plus className="w-4 h-4" />}>
-              Add Product to Master Database
-            </Button>
+            {productSubTab === 'active' && (
+              <Button onClick={handleOpenAddModal} variant="primary" icon={<Plus className="w-4 h-4" />}>
+                Add Product to Master Database
+              </Button>
+            )}
           </div>
 
-          {/* Search & Category Filter */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 relative">
-              <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search master products by name or brand..."
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-zinc-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30"
-              />
-            </div>
-
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2.5 rounded-xl border border-zinc-200 text-xs bg-white font-medium focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30 cursor-pointer"
+          {/* Sub-Tab Navigation Switcher */}
+          <div className="flex items-center gap-1 p-1 bg-zinc-200/50 rounded-2xl w-fit border border-black/[0.04]">
+            <button
+              onClick={() => setProductSubTab('active')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all cursor-pointer ${
+                productSubTab === 'active'
+                  ? 'bg-white text-zinc-900 font-bold shadow-xs border border-black/[0.04]'
+                  : 'bg-transparent text-zinc-500 hover:text-zinc-800 font-medium hover:bg-white/40 border-none'
+              }`}
             >
-              <option value="All">All Categories</option>
-              <option value="Foundation">Foundation</option>
-              <option value="Concealer">Concealer</option>
-              <option value="Blush">Blush</option>
-              <option value="Lipstick">Lipstick</option>
-              <option value="Mascara">Mascara</option>
-              <option value="Powder">Powder</option>
-              <option value="Primer">Primer</option>
-              <option value="Serum">Serum</option>
-              <option value="Moisturizer">Moisturizer</option>
-              <option value="Sunscreen">Sunscreen</option>
-            </select>
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Active Products</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                productSubTab === 'active' ? 'bg-zinc-100 text-zinc-800' : 'bg-black/[0.05] text-zinc-500'
+              }`}>
+                {activeProducts.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setProductSubTab('requests')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all cursor-pointer ${
+                productSubTab === 'requests'
+                  ? 'bg-white text-zinc-900 font-bold shadow-xs border border-black/[0.04]'
+                  : 'bg-transparent text-zinc-500 hover:text-zinc-800 font-medium hover:bg-white/40 border-none'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Request Products</span>
+              {pendingProducts.length > 0 ? (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  productSubTab === 'requests' ? 'bg-[#F26CA7] text-white shadow-xs' : 'bg-[#F26CA7]/20 text-[#F26CA7]'
+                }`}>
+                  {pendingProducts.length}
+                </span>
+              ) : (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                  productSubTab === 'requests' ? 'bg-zinc-100 text-zinc-800' : 'bg-black/[0.05] text-zinc-500'
+                }`}>
+                  0
+                </span>
+              )}
+            </button>
           </div>
+
+          {/* ── SUB-TAB: REQUEST PRODUCTS ── */}
+          {productSubTab === 'requests' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
+                    <span>Pengajuan Produk Affiliator</span>
+                    <Badge variant={pendingProducts.length > 0 ? "warning" : "success"}>
+                      {pendingProducts.length > 0 ? `${pendingProducts.length} Menunggu Review` : 'Semua Sudah Ditinjau'}
+                    </Badge>
+                  </h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Produk yang diinput mandiri oleh affiliator membutuhkan persetujuan Admin agar dapat aktif dan direkomendasikan di scanner AI.
+                  </p>
+                </div>
+              </div>
+
+              {pendingProducts.length === 0 ? (
+                <Card className="p-10 text-center border-dashed border-zinc-200 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto text-xl font-bold">
+                    ✓
+                  </div>
+                  <h4 className="text-sm font-bold text-zinc-900">Tidak Ada Pengajuan Produk Pending</h4>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                    Seluruh produk manual dari affiliator telah diproses. Pengajuan baru akan otomatis masuk ke tab ini.
+                  </p>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {pendingProducts.map((prod) => (
+                    <Card key={prod.id} className="p-4 border-amber-200/80 bg-amber-50/30 hover:bg-amber-50/50 transition-colors">
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <ProductThumb src={prod.imageUrl} alt={prod.name} className="w-16 h-16 rounded-2xl border border-amber-200" />
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{prod.brand}</span>
+                              <Badge variant="outline" size="sm">{prod.category}</Badge>
+                              {prod.shade && <span className="text-[11px] text-zinc-500 font-medium">• {prod.shade}</span>}
+                            </div>
+                            <h4 className="text-sm font-bold text-zinc-900 truncate">{prod.name}</h4>
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="font-extrabold text-[var(--primary)]">Rp {prod.price.toLocaleString('id-ID')}</span>
+                              {prod.affiliateUrl && (
+                                <a
+                                  href={prod.affiliateUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-zinc-500 hover:text-zinc-900 underline flex items-center gap-1 text-[11px]"
+                                >
+                                  <span>Link Affiliate</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
+                            {prod.affiliatorNote && (
+                              <p className="text-[11px] text-zinc-500 italic">
+                                Catatan / Ingredients: {prod.affiliatorNote}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2.5 shrink-0 self-end md:self-center">
+                          <button
+                            onClick={() => onUpdateProductApproval?.(prod.id, 'Approved')}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+                          >
+                            ✓ Setujui (Approve)
+                          </button>
+                          <button
+                            onClick={() => setRejectingProductId(prod.id)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition-all active:scale-95 cursor-pointer"
+                          >
+                            ✗ Tolak (Reject)
+                          </button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── SUB-TAB: ACTIVE PRODUCTS ── */}
+          {productSubTab === 'active' && (
+            <div className="space-y-4">
+              {/* Search & Category Filter */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search master products by name or brand..."
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-zinc-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30"
+                  />
+                </div>
+
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl border border-zinc-200 text-xs bg-white font-medium focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30 cursor-pointer"
+                >
+                  <option value="All">All Categories</option>
+                  <option value="Foundation">Foundation</option>
+                  <option value="Concealer">Concealer</option>
+                  <option value="Blush">Blush</option>
+                  <option value="Lipstick">Lipstick</option>
+                  <option value="Mascara">Mascara</option>
+                  <option value="Powder">Powder</option>
+                  <option value="Primer">Primer</option>
+                  <option value="Serum">Serum</option>
+                  <option value="Moisturizer">Moisturizer</option>
+                  <option value="Sunscreen">Sunscreen</option>
+                </select>
+              </div>
 
           {/* Products Table */}
           <Card className="overflow-hidden border-zinc-200">
@@ -531,7 +721,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         <Badge variant="outline">{prod.category}</Badge>
                       </td>
                       <td className="py-3.5 px-4 font-bold text-zinc-900">
-                        ${prod.price.toFixed(2)}
+                        Rp {prod.price.toLocaleString('id-ID')}
                       </td>
                       <td className="py-3.5 px-4">
                         <a
@@ -573,8 +763,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </Card>
         </div>
       )}
+    </div>
+  )}
 
-      {/* AFFILIATORS TAB */}
+  {/* AFFILIATORS TAB */}
       {currentTab === 'affiliators' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -681,15 +873,28 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         </button>
                       </td>
 
-                      {/* 6. Edit */}
+                      {/* 6. Actions */}
                       <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => handleOpenEditAffiliator(aff)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors cursor-pointer shadow-2xs active:scale-95"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          Edit
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleOpenEditAffiliator(aff)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors cursor-pointer shadow-2xs active:scale-95"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Yakin ingin menghapus akun ${aff.name}?`)) {
+                                onDeleteAffiliator?.(aff.id);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-medium transition-colors cursor-pointer shadow-2xs active:scale-95"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Hapus
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -794,9 +999,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 </span>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto max-h-[400px] overflow-y-auto custom-scrollbar">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-zinc-50 border-b border-zinc-200 font-bold text-zinc-500 uppercase tracking-wider text-[10px]">
+                  <thead className="bg-zinc-50 border-b border-zinc-200 font-bold text-zinc-500 uppercase tracking-wider text-[10px] sticky top-0 z-10">
                     <tr>
                       <th className="py-3 px-3">Rank</th>
                       <th className="py-3 px-3">Produk Makeup</th>
@@ -830,7 +1035,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           <Badge variant="outline" size="sm">{prod.category}</Badge>
                         </td>
                         <td className="py-3 px-3 font-bold text-zinc-900">
-                          ${prod.price.toFixed(2)}
+                          Rp {prod.price.toLocaleString('id-ID')}
                         </td>
                         <td className="py-3 px-3 text-right">
                           <span className="font-black text-[var(--primary)] text-sm">{prod.clicks.toLocaleString()}</span>
@@ -1046,15 +1251,82 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-zinc-700 font-bold mb-1">Image URL</label>
-                <input
-                  type="url"
-                  required
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-zinc-200 text-xs focus:ring-2 focus:ring-[var(--primary)]/30 focus:outline-none"
-                />
+              {/* Photo Section with Upload File vs Paste URL */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-zinc-700 font-bold">Product Photo</label>
+                  <div className="flex items-center p-0.5 bg-zinc-100 rounded-lg border border-black/[0.04] text-[11px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setAdminImageUploadType('file')}
+                      className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                        adminImageUploadType === 'file'
+                          ? 'bg-white text-zinc-900 shadow-xs font-bold'
+                          : 'text-zinc-500 hover:text-zinc-800'
+                      }`}
+                    >
+                      📁 Upload File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdminImageUploadType('url')}
+                      className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                        adminImageUploadType === 'url'
+                          ? 'bg-white text-zinc-900 shadow-xs font-bold'
+                          : 'text-zinc-500 hover:text-zinc-800'
+                      }`}
+                    >
+                      🔗 Gunakan URL
+                    </button>
+                  </div>
+                </div>
+
+                {adminImageUploadType === 'file' ? (
+                  <div className="flex gap-3 items-center">
+                    {imageUrl ? (
+                      <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-50 shrink-0 group">
+                        <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setImageUrl('')}
+                          className="absolute inset-0 bg-black/60 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] font-bold transition-opacity"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <label className="flex-1 flex flex-col items-center justify-center p-3 border-2 border-dashed border-zinc-200 hover:border-[#F26CA7]/50 rounded-2xl cursor-pointer bg-zinc-50/50 hover:bg-pink-50/20 transition-all text-center">
+                      <Upload className="w-4 h-4 text-zinc-400 mb-1" />
+                      <span className="text-xs font-bold text-zinc-700">Pilih Foto dari Perangkat</span>
+                      <span className="text-[10px] text-zinc-400 mt-0.5">PNG, JPG, WEBP hingga 5MB</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAdminFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="flex gap-2.5 items-center">
+                    {imageUrl ? (
+                      <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 shrink-0">
+                        <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                      </div>
+                    ) : null}
+                    <div className="flex-1">
+                      <input
+                        type="url"
+                        required
+                        value={imageUrl}
+                        onChange={(e) => setImageUrl(e.target.value)}
+                        placeholder="https://images.unsplash.com/..."
+                        className="w-full p-2.5 rounded-xl border border-zinc-200 text-xs focus:ring-2 focus:ring-[var(--primary)]/30 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1335,6 +1607,29 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </motion.div>
         )}
       </AnimatePresence>
+
+      {/* REJECT CONFIRM MODAL */}
+      <Modal
+        isOpen={rejectingProductId !== null}
+        onClose={() => setRejectingProductId(null)}
+        title="Tolak Pengajuan Produk"
+        description="Apakah Anda yakin ingin menolak pengajuan produk ini? Produk tidak akan tampil di rekomendasi AI."
+      >
+        <div className="pt-4 flex justify-end gap-3">
+          <Button onClick={() => setRejectingProductId(null)} variant="ghost">
+            Batal
+          </Button>
+          <Button
+            onClick={() => {
+              if (rejectingProductId) onUpdateProductApproval?.(rejectingProductId, 'Rejected');
+              setRejectingProductId(null);
+            }}
+            variant="danger"
+          >
+            Tolak Produk
+          </Button>
+        </div>
+      </Modal>
 
     </div>
   );

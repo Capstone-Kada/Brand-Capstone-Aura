@@ -59,6 +59,7 @@ export interface Product {
   targetsConcerns: SkinConcern[];
   matchScoreWeight: number; // 0-100
   status: 'Active' | 'Draft' | 'Out of Stock';
+  approvalStatus?: 'Approved' | 'Pending' | 'Rejected'; // Only used for custom products added by affiliators
   clicks: number;
   conversions: number;
   revenueGenerated: number;
@@ -147,6 +148,7 @@ export interface UserProfile {
     weeklyReport: boolean;
     newFeatures: boolean;
   };
+  isTwoFactorEnabled?: boolean;
 }
 
 export interface AffiliatorAccount {

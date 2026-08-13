@@ -47,8 +47,60 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong.';
 }
 
+const PENDING_PRODUCTS_STORAGE_KEY = 'aura_pending_products';
+
+const DEFAULT_PENDING_PRODUCTS: Product[] = [
+  {
+    id: 'custom-demo-1',
+    name: 'Skin Tint Serum SPF 35 (Custom Affiliator Submission)',
+    brand: 'Rose All Day',
+    category: 'Foundation',
+    price: 159000,
+    imageUrl: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80&w=400',
+    affiliateUrl: 'https://shopee.co.id/roseallday/skintint',
+    shade: 'Light Warm',
+    suitableSkinTones: ['Fair', 'Light', 'Medium'],
+    suitableUndertones: ['Warm', 'Neutral'],
+    suitableSkinTypes: ['Combination', 'Normal'],
+    targetsConcerns: ['Dullness'],
+    matchScoreWeight: 90,
+    status: 'Active',
+    approvalStatus: 'Pending',
+    affiliatorNote: 'Niacinamide, Hyaluronic Acid (Pending admin approval)',
+    clicks: 0,
+    conversions: 0,
+    revenueGenerated: 0,
+  }
+];
+
+const getStoredCustomProducts = (): Product[] => {
+  try {
+    const raw = localStorage.getItem(PENDING_PRODUCTS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+    localStorage.setItem(PENDING_PRODUCTS_STORAGE_KEY, JSON.stringify(DEFAULT_PENDING_PRODUCTS));
+    return DEFAULT_PENDING_PRODUCTS;
+  } catch {
+    return DEFAULT_PENDING_PRODUCTS;
+  }
+};
+
+const saveStoredCustomProducts = (items: Product[]) => {
+  try {
+    localStorage.setItem(PENDING_PRODUCTS_STORAGE_KEY, JSON.stringify(items));
+  } catch (e) {
+    console.error(e);
+  }
+};
+
 export function useBeautyStore() {
-  const [currentRoute, setCurrentRoute] = useState<RouteView>('landing');
+  const [currentRoute, setCurrentRoute] = useState<RouteView>(() => {
+    const path = window.location.pathname.replace('/', '');
+    // If the path looks like a username/slug (not empty), default to public-recommendation
+    if (path && path.length > 2) {
+      return 'public-recommendation';
+    }
+    return 'landing';
+  });
   const [user, setUser] = useState<UserProfile | null>(null);
   const [affiliators, setAffiliators] = useState<AffiliatorAccount[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -75,7 +127,11 @@ export function useBeautyStore() {
   }, []);
 
   // Selected AI page for public view
-  const [activePageSlug, setActivePageSlug] = useState<string>('kate-glow');
+  const [activePageSlug, setActivePageSlug] = useState<string>(() => {
+    const path = window.location.pathname.replace('/', '');
+    if (path && path.length > 2) return path;
+    return 'kate-glow';
+  });
 
   const loadAffiliatorWorkspace = useCallback(async () => {
     const [profile, listings, pages, leadRows, summary, catalog, chart, undertones, concerns] = await Promise.all([
@@ -90,7 +146,8 @@ export function useBeautyStore() {
       api.analytics.concernStats(),
     ]);
     setUser(mapAffiliatorToUserProfile(profile, 'affiliator'));
-    setProducts(listings.map(mapListingToProduct));
+    const customProds = getStoredCustomProducts();
+    setProducts([...customProds, ...listings.map(mapListingToProduct)]);
     setAiPages(pages.map(mapAIPageDto));
     setLeads(leadRows.map(mapCustomerLeadDto));
     setAnalytics(summary);
@@ -122,7 +179,8 @@ export function useBeautyStore() {
       monthlyScanLimit: 0,
       notifications: { emailDigest: false, conversionAlerts: false, weeklyReport: false, newFeatures: false },
     });
-    setProducts(masterProducts.map(mapMasterProductToProduct));
+    const customProds = getStoredCustomProducts();
+    setProducts([...customProds, ...masterProducts.map(mapMasterProductToProduct)]);
     setAffiliators(affiliatorRows.map(mapAffiliatorToAccount));
   }, []);
 
@@ -131,10 +189,20 @@ export function useBeautyStore() {
     if (!getAccessToken()) return;
     setIsLoadingWorkspace(true);
     loadAffiliatorWorkspace()
-      .then(() => setCurrentRoute((prev) => (prev === 'landing' ? 'dashboard' : prev)))
+      .then(() => {
+        setCurrentRoute((prev) => {
+          if (prev === 'public-recommendation') return prev;
+          return prev === 'landing' ? 'dashboard' : prev;
+        });
+      })
       .catch(() => {
         loadAdminWorkspace()
-          .then(() => setCurrentRoute((prev) => (prev === 'landing' ? 'admin-dashboard' : prev)))
+          .then(() => {
+            setCurrentRoute((prev) => {
+              if (prev === 'public-recommendation') return prev;
+              return prev === 'landing' ? 'admin-dashboard' : prev;
+            });
+          })
           .catch(() => api.auth.logout());
       })
       .finally(() => setIsLoadingWorkspace(false));
@@ -161,10 +229,15 @@ export function useBeautyStore() {
   }, [addToast]);
 
   const loginAs = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string): Promise<{ requires2FA?: boolean; userId?: string } | void> => {
       setIsLoadingWorkspace(true);
       try {
-        const { user: authUser } = await api.auth.login(email, password);
+        const response = await api.auth.login(email, password);
+        if (response.requires2FA) {
+          return { requires2FA: true, userId: response.userId };
+        }
+
+        const authUser = response.user!;
         if (authUser.role === 'ADMIN') {
           await loadAdminWorkspace();
           setCurrentRoute('admin-dashboard');
@@ -176,6 +249,7 @@ export function useBeautyStore() {
         }
       } catch (err) {
         addToast('Sign In Failed', errorMessage(err), 'error');
+        throw err;
       } finally {
         setIsLoadingWorkspace(false);
       }
@@ -183,11 +257,66 @@ export function useBeautyStore() {
     [addToast, loadAdminWorkspace, loadAffiliatorWorkspace],
   );
 
-  const loginWithGoogle = useCallback(
-    async (idToken: string) => {
+  const verify2FA = useCallback(
+    async (userId: string, token: string) => {
       setIsLoadingWorkspace(true);
       try {
-        const { user: authUser } = await api.auth.google(idToken);
+        const { user: authUser } = await api.auth.verify2FA(userId, token);
+        if (authUser!.role === 'ADMIN') {
+          await loadAdminWorkspace();
+          setCurrentRoute('admin-dashboard');
+          addToast('Admin Signed In', 'Welcome to Aura Platform Master Dashboard.', 'success');
+        } else {
+          await loadAffiliatorWorkspace();
+          setCurrentRoute('dashboard');
+          addToast('Affiliator Signed In', 'Welcome back to your creator dashboard.', 'success');
+        }
+      } catch (err) {
+        addToast('2FA Verification Failed', errorMessage(err), 'error');
+        throw err;
+      } finally {
+        setIsLoadingWorkspace(false);
+      }
+    },
+    [addToast, loadAdminWorkspace, loadAffiliatorWorkspace],
+  );
+
+  const logout = useCallback(() => {
+    api.auth.logout();
+    setUser(null);
+    setAffiliators([]);
+    setProducts([]);
+    setMasterCatalog([]);
+    setAiPages([]);
+    setLeads([]);
+    setChartData([]);
+    setUndertoneStats([]);
+    setConcernStats([]);
+    setCurrentRoute('landing');
+    addToast('Signed Out', 'You have been successfully logged out.', 'success');
+  }, [addToast]);
+
+  const disable2FA = useCallback(async () => {
+    try {
+      await api.auth.disable2FA();
+      addToast('2FA Disabled', 'Two-factor authentication has been turned off.', 'success');
+      setUser((prev) => (prev ? { ...prev, isTwoFactorEnabled: false } : prev));
+    } catch (err) {
+      addToast('Failed to Disable 2FA', errorMessage(err), 'error');
+      throw err;
+    }
+  }, [addToast]);
+
+  const loginWithGoogle = useCallback(
+    async (idToken: string): Promise<{ requires2FA?: boolean; userId?: string } | void> => {
+      setIsLoadingWorkspace(true);
+      try {
+        const response = await api.auth.google(idToken);
+        if (response.requires2FA) {
+          return { requires2FA: true, userId: response.userId };
+        }
+
+        const authUser = response.user!;
         if (authUser.role === 'ADMIN') {
           await loadAdminWorkspace();
           setCurrentRoute('admin-dashboard');
@@ -199,6 +328,7 @@ export function useBeautyStore() {
         }
       } catch (err) {
         addToast('Google Sign-In Failed', errorMessage(err), 'error');
+        throw err;
       } finally {
         setIsLoadingWorkspace(false);
       }
@@ -249,6 +379,19 @@ export function useBeautyStore() {
     [addToast],
   );
 
+  const deleteAffiliator = useCallback(
+    async (affiliatorId: string) => {
+      try {
+        await api.affiliator.adminDelete(affiliatorId);
+        setAffiliators((prev) => prev.filter((a) => a.id !== affiliatorId));
+        addToast('Affiliator Deleted', 'Akun affiliator berhasil dihapus.', 'success');
+      } catch (err) {
+        addToast('Delete Failed', errorMessage(err), 'error');
+      }
+    },
+    [addToast],
+  );
+
   // Public AI Scan state
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -291,14 +434,28 @@ export function useBeautyStore() {
         }
         return;
       }
+      // Manual (custom) product — requires admin approval before going live
       if (!productData.productId) {
+        const newCustomProduct: Product = {
+          id: `custom-${Date.now()}`,
+          ...productData,
+          productId: undefined,
+          approvalStatus: 'Pending',
+          clicks: 0,
+          conversions: 0,
+          revenueGenerated: 0,
+        };
+        const currentCustom = getStoredCustomProducts();
+        saveStoredCustomProducts([newCustomProduct, ...currentCustom]);
+        setProducts((prev) => [newCustomProduct, ...prev]);
         addToast(
-          'Pilih Produk dari Master Catalog',
-          'Menambah produk custom di luar master catalog belum didukung — pilih salah satu dari "Auto-Fill dari Master Product Catalog" dulu.',
-          'error',
+          'Product Submitted for Approval',
+          `"${newCustomProduct.name}" has been submitted. It will be visible after admin approval.`,
+          'info',
         );
         return;
       }
+
       try {
         const listing = await api.listings.create({
           productId: productData.productId,
@@ -364,6 +521,14 @@ export function useBeautyStore() {
   const deleteProduct = useCallback(
     async (id: string) => {
       const prod = products.find((p) => p.id === id);
+      if (id.startsWith('custom-')) {
+        const currentCustom = getStoredCustomProducts();
+        saveStoredCustomProducts(currentCustom.filter(p => p.id !== id));
+        setProducts((prev) => prev.filter((p) => p.id !== id));
+        addToast('Product Removed', prod ? `"${prod.name}" was deleted.` : 'Product deleted.', 'info');
+        return;
+      }
+
       if (user?.role === 'admin') {
         try {
           await api.products.adminDelete(id);
@@ -385,7 +550,34 @@ export function useBeautyStore() {
     [products, addToast, user],
   );
 
-  // AI Page Config update
+  // Update approval status for a custom product (admin only)
+  const updateProductApproval = useCallback(
+    async (id: string, approvalStatus: 'Approved' | 'Rejected') => {
+      if (user?.role !== 'admin') return;
+      
+      // Update state
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, approvalStatus } : p))
+      );
+
+      // Persist in localStorage
+      const currentCustom = getStoredCustomProducts();
+      const updatedCustom = currentCustom.map((p) =>
+        p.id === id ? { ...p, approvalStatus } : p
+      );
+      saveStoredCustomProducts(updatedCustom);
+
+      const prod = products.find((p) => p.id === id);
+      const statusLabel = approvalStatus === 'Approved' ? 'approved' : 'rejected';
+      addToast(
+        `Product ${approvalStatus}`,
+        `"${prod?.name ?? 'Product'}" has been ${statusLabel}.`,
+        approvalStatus === 'Approved' ? 'success' : 'error',
+      );
+    },
+    [products, addToast, user],
+  );
+
   const updateAIPage = useCallback(
     async (pageId: string, updated: Partial<AIPageConfig>) => {
       try {
@@ -438,7 +630,7 @@ export function useBeautyStore() {
 
   // Public Selfie Scan — real AI scan via POST /leads for the active AIPage slug.
   const startSelfieScan = useCallback(
-    (imageSrc: string) => {
+    (imageSrc: string, skinPref?: string, finishPref?: string, budgetPref?: string) => {
       setScannedImage(imageSrc);
       setIsAnalyzing(true);
       setAnalysisStep(1);
@@ -450,6 +642,9 @@ export function useBeautyStore() {
           const form = new FormData();
           form.append('slug', activePageSlug);
           form.append('image', blob, 'scan.jpg');
+          if (skinPref) form.append('skinPref', skinPref);
+          if (finishPref) form.append('finishPref', finishPref);
+          if (budgetPref) form.append('budgetPref', budgetPref);
 
           const result = await api.leads.submit(form);
           setScanResult(mapScanResultDto(result));
@@ -466,6 +661,7 @@ export function useBeautyStore() {
             undertone: 'Cool',
             skinTone: 'Medium',
             faceShape: 'Oval',
+            matchSummary: 'Wah! Kulit Medium Cool kamu terlihat cantik alami. Berdasarkan jawaban kuesioner kamu, produk-produk ini direkomendasikan agar memberikan hasil akhir sempurna yang kamu impikan tanpa membuat kulit terasa berat.',
             bestColorPalette: [
               { name: 'Mauve Pink', colorHex: '#C77D9E' },
               { name: 'Dusty Rose', colorHex: '#D4A5B8' },
@@ -511,11 +707,15 @@ export function useBeautyStore() {
     navigateTo,
     user: user ?? GUEST_USER,
     loginAs,
+    verify2FA,
+    logout,
+    disable2FA,
     loginWithGoogle,
     registerAffiliator,
     affiliators,
     updateAffiliatorStatus,
     updateAffiliator,
+    deleteAffiliator,
     updateProfile,
     regenerateApiKey,
     products,
@@ -523,6 +723,7 @@ export function useBeautyStore() {
     addProduct,
     updateProduct,
     deleteProduct,
+    updateProductApproval,
     aiPages,
     activePageSlug,
     updateAIPage,
@@ -543,5 +744,6 @@ export function useBeautyStore() {
     startSelfieScan,
     resetScan,
     recordAffiliateClick,
+    reloadWorkspace: loadAffiliatorWorkspace,
   };
 }

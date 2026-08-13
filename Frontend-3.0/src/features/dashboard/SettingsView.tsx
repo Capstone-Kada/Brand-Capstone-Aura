@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, Bell, Key, CreditCard, ShieldCheck, Copy, RefreshCw, Check } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { Card, Button, Input, Tabs, Avatar, Badge } from '../../components/ui/UIComponents';
+import { api } from '../../services/api';
 
 interface SettingsViewProps {
   user: UserProfile;
@@ -32,6 +33,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [emailDigest, setEmailDigest] = useState(user.notifications.emailDigest);
   const [conversionAlerts, setConversionAlerts] = useState(user.notifications.conversionAlerts);
 
+  // Security & 2FA
+  const [is2FAEnabled, setIs2FAEnabled] = useState(user.isTwoFactorEnabled || false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
+  const [setupSecret, setSetupSecret] = useState('');
+  const [twoFactorToken, setTwoFactorToken] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isEnabling, setIsEnabling] = useState(false);
+  const [isDisabling, setIsDisabling] = useState(false);
+
+  const handleGenerate2FA = async () => {
+    setIsGenerating(true);
+    try {
+      const result = await api.auth.generate2FA();
+      setSetupSecret(result.secret);
+      setQrCodeDataUrl(result.qrCodeDataUrl);
+    } catch (e) {
+      onToast('Error', 'Failed to generate 2FA setup');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleEnable2FA = async () => {
+    if (!twoFactorToken || twoFactorToken.length < 6) return;
+    setIsEnabling(true);
+    try {
+      await api.auth.enable2FA(twoFactorToken);
+      setIs2FAEnabled(true);
+      setQrCodeDataUrl('');
+      setSetupSecret('');
+      onToast('Success', 'Two-Factor Authentication enabled');
+    } catch (e) {
+      onToast('Error', 'Invalid 2FA code');
+    } finally {
+      setIsEnabling(false);
+    }
+  };
+
+  const handleDisable2FA = async () => {
+    setIsDisabling(true);
+    try {
+      await api.auth.disable2FA();
+      setIs2FAEnabled(false);
+      onToast('Success', 'Two-Factor Authentication disabled');
+    } catch (e) {
+      onToast('Error', 'Failed to disable 2FA');
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateProfile({
@@ -43,7 +95,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="space-y-8 pb-12 max-w-4xl">
+    <div className="space-y-8 pb-12 w-full">
       
       {/* Header */}
       <div>
@@ -55,6 +107,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <Tabs
         tabs={[
           { id: 'profile', label: 'Profile Settings' },
+          { id: 'security', label: 'Security & 2FA' },
           { id: 'notifications', label: 'Notification Preferences' },
           { id: 'api', label: 'Developer API Keys' },
         ]}
@@ -124,6 +177,75 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </Button>
           </Card>
         </form>
+      )}
+
+      {/* Security & 2FA Tab */}
+      {activeTab === 'security' && (
+        <Card className="p-6 space-y-6">
+          <div className="border-b border-zinc-100 pb-3">
+            <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-500" />
+              Two-Factor Authentication (2FA)
+            </h3>
+            <p className="text-xs text-zinc-500 mt-1">Protect your account with an additional layer of security using an authenticator app.</p>
+          </div>
+
+          <div className="space-y-4">
+            {is2FAEnabled ? (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3">
+                <Check className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <h4 className="text-sm font-bold text-emerald-800">2FA is Enabled</h4>
+                  <p className="text-xs text-emerald-600 mt-1">Your account is secured with two-factor authentication.</p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleDisable2FA} 
+                  disabled={isDisabling}
+                  className="bg-white border-red-200 text-red-600 hover:bg-red-50 shrink-0"
+                >
+                  {isDisabling ? 'Disabling...' : 'Disable 2FA'}
+                </Button>
+              </div>
+            ) : qrCodeDataUrl ? (
+              <div className="space-y-4 max-w-sm">
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-center space-y-3">
+                  <p className="text-xs font-bold text-zinc-700">1. Scan this QR code in your Authenticator App</p>
+                  <img src={qrCodeDataUrl} alt="2FA QR Code" className="w-40 h-40 mx-auto bg-white p-2 rounded-xl border border-zinc-200" />
+                  <p className="text-[10px] text-zinc-500 break-all font-mono bg-white py-1 px-2 rounded border border-zinc-100">{setupSecret}</p>
+                </div>
+                
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-zinc-700">2. Enter the 6-digit code</p>
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      placeholder="000000"
+                      maxLength={6}
+                      value={twoFactorToken}
+                      onChange={(e) => setTwoFactorToken(e.target.value)}
+                    />
+                    <Button onClick={handleEnable2FA} disabled={isEnabling || twoFactorToken.length < 6}>
+                      Verify
+                    </Button>
+                  </div>
+                </div>
+                
+                <Button variant="ghost" className="w-full" onClick={() => setQrCodeDataUrl('')}>
+                  Cancel Setup
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-zinc-600">Setup two-factor authentication to secure your earnings and account data.</p>
+                <Button onClick={handleGenerate2FA} disabled={isGenerating}>
+                  {isGenerating ? 'Loading...' : 'Set Up 2FA'}
+                </Button>
+              </div>
+            )}
+          </div>
+        </Card>
       )}
 
       {/* Notifications Tab */}

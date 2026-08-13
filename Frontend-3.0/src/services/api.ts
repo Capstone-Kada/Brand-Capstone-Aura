@@ -114,8 +114,10 @@ async function unwrap<T>(promise: Promise<{ data: ApiSuccess<T> }>): Promise<T> 
 // ---------------------------------------------------------------------------
 
 interface AuthResponseDto {
-  user: { id: string; email: string; role: string };
-  tokens: { accessToken: string; refreshToken: string; expiresIn: string; tokenType: string };
+  user?: { id: string; email: string; role: string };
+  tokens?: { accessToken: string; refreshToken: string; expiresIn: string; tokenType: string };
+  requires2FA?: boolean;
+  userId?: string;
 }
 
 interface AffiliatorProfileDto {
@@ -140,6 +142,7 @@ interface AffiliatorProfileDto {
   totalProductsInCatalog: number;
   totalScansGenerated: number;
   totalClicksGenerated: number;
+  isTwoFactorEnabled: boolean;
 }
 
 interface ListingDto {
@@ -232,14 +235,13 @@ interface CustomerLeadDto {
 }
 
 interface LeadScanResultDto {
-  leadId: string;
-  scanId: string;
   confidence: number;
   personalColor: string;
   undertone: string;
   skinTone: string;
   faceShape: string;
   bestColorPalette: { name: string; colorHex: string }[];
+  matchSummary?: string;
   recommendedProducts: { product: ListingDto; matchScore: number; recommendedShade?: string; aiReason: string }[];
 }
 
@@ -321,6 +323,7 @@ export function mapAffiliatorToUserProfile(a: AffiliatorProfileDto, role: 'admin
       weeklyReport: a.notifications.weeklyReport,
       newFeatures: a.notifications.newFeatures,
     },
+    isTwoFactorEnabled: a.isTwoFactorEnabled,
   };
 }
 
@@ -396,6 +399,7 @@ function mapScanResultDto(r: LeadScanResultDto): AIAnalysisResult {
     skinTone: r.skinTone as AIAnalysisResult['skinTone'],
     faceShape: r.faceShape as AIAnalysisResult['faceShape'],
     bestColorPalette: r.bestColorPalette,
+    matchSummary: r.matchSummary ?? undefined,
     recommendedProducts: r.recommendedProducts.map((m) => ({
       product: mapListingToProduct(m.product),
       matchScore: m.matchScore,
@@ -413,22 +417,38 @@ export const api = {
   auth: {
     async login(email: string, password: string): Promise<AuthResponseDto> {
       const result = await unwrap(http.post<ApiSuccess<AuthResponseDto>>('/auth/login', { email, password }));
-      setTokens(result.tokens.accessToken, result.tokens.refreshToken);
+      if (result.tokens) {
+        setTokens(result.tokens.accessToken, result.tokens.refreshToken);
+      }
       return result;
     },
     async register(input: { email: string; password: string; name?: string; accountType?: 'USER' | 'AFFILIATOR' }): Promise<AuthResponseDto> {
       const result = await unwrap(http.post<ApiSuccess<AuthResponseDto>>('/auth/register', input));
-      setTokens(result.tokens.accessToken, result.tokens.refreshToken);
+      if (result.tokens) {
+        setTokens(result.tokens.accessToken, result.tokens.refreshToken);
+      }
       return result;
     },
     async google(idToken: string): Promise<AuthResponseDto> {
       const result = await unwrap(http.post<ApiSuccess<AuthResponseDto>>('/auth/google', { idToken }));
-      setTokens(result.tokens.accessToken, result.tokens.refreshToken);
+      if (result.tokens) {
+        setTokens(result.tokens.accessToken, result.tokens.refreshToken);
+      }
       return result;
     },
     logout(): void {
       setTokens(null, null);
     },
+    generate2FA: (): Promise<{ secret: string; qrCodeDataUrl: string }> => unwrap(http.post('/auth/2fa/generate')),
+    enable2FA: (token: string): Promise<void> => unwrap(http.post('/auth/2fa/enable', { token })),
+    async verify2FA(userId: string, token: string): Promise<AuthResponseDto> {
+      const result = await unwrap(http.post<ApiSuccess<AuthResponseDto>>('/auth/2fa/verify', { userId, token }));
+      if (result.tokens) {
+        setTokens(result.tokens.accessToken, result.tokens.refreshToken);
+      }
+      return result;
+    },
+    disable2FA: (): Promise<void> => unwrap(http.post('/auth/2fa/disable')),
   },
 
   affiliator: {
@@ -440,6 +460,7 @@ export const api = {
       unwrap(http.patch(`/affiliators/${id}/status`, { status })),
     adminUpdate: (id: string, data: Record<string, unknown>): Promise<AffiliatorProfileDto> =>
       unwrap(http.patch(`/affiliators/${id}`, data)),
+    adminDelete: (id: string): Promise<void> => unwrap(http.delete(`/affiliators/${id}`)),
   },
 
   listings: {
@@ -481,6 +502,12 @@ export const api = {
       unwrap(http.get('/analytics/chart')),
     undertoneStats: (): Promise<{ name: string; percentage: number }[]> => unwrap(http.get('/analytics/undertone-stats')),
     concernStats: (): Promise<{ concern: string; percentage: number }[]> => unwrap(http.get('/analytics/concern-stats')),
+  },
+
+  subscription: {
+    plans: (): Promise<any[]> => unwrap(http.get('/subscriptions/plans')),
+    checkout: (plan: 'PRO' | 'ELITE'): Promise<{ orderId: string; snapToken: string; redirectUrl: string; amount: number; plan: 'PRO' | 'ELITE' }> =>
+      unwrap(http.post('/subscriptions/checkout', { plan })),
   },
 };
 

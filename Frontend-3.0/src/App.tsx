@@ -25,6 +25,7 @@ export default function App() {
     navigateTo,
     user,
     loginAs,
+    verify2FA,
     loginWithGoogle,
     registerAffiliator,
     activePageSlug,
@@ -38,6 +39,7 @@ export default function App() {
     addProduct,
     updateProduct,
     deleteProduct,
+    updateProductApproval,
     aiPages,
     updateAIPage,
     leads,
@@ -56,7 +58,9 @@ export default function App() {
     startSelfieScan,
     resetScan,
     recordAffiliateClick,
-    isLoadingWorkspace
+    isLoadingWorkspace,
+    logout,
+    reloadWorkspace
   } = useBeautyStore();
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -88,7 +92,7 @@ export default function App() {
 
       {/* WORKSPACE LOADING OVERLAY (login / session restore / register) */}
       {isLoadingWorkspace && (
-        <div className="fixed inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center gap-3">
           <div className="w-10 h-10 border-[3px] border-[#F26CA7]/30 border-t-[#F26CA7] rounded-full animate-spin" />
           <p className="text-xs font-semibold text-zinc-500">Memuat dashboard kamu...</p>
         </div>
@@ -108,6 +112,7 @@ export default function App() {
           initialView={currentRoute as 'login' | 'register' | 'forgot-password'}
           onNavigate={navigateTo}
           onLoginAs={loginAs}
+          onVerify2FA={verify2FA}
           onRegister={registerAffiliator}
           onGoogleLogin={loginWithGoogle}
           onSuccess={() => addToast('Welcome to Aura!', 'Portal is ready.', 'success')}
@@ -154,50 +159,67 @@ export default function App() {
 
       {/* AFFILIATOR DASHBOARD LAYOUT & VIEWS */}
       {isDashboardRoute && (
-        <div className="flex flex-col lg:flex-row min-h-screen bg-[#FAFAFC]">
-          
-          {/* Mobile Navigation Header Bar */}
-          <header className="lg:hidden bg-[#0F0F11] text-white px-4 py-3 border-b border-zinc-800/80 sticky top-0 z-30 flex items-center justify-between shadow-md">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setIsMobileSidebarOpen(true)}
-                className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-                aria-label="Open navigation menu"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
+        <div 
+          className="flex flex-col lg:flex-row min-h-screen relative"
+          style={{
+            backgroundImage: `url('/image/Background-2.png')`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundAttachment: 'fixed'
+          }}
+        >
+          {/* Background Overlay */}
+          <div className="absolute inset-0 bg-white/30 backdrop-blur-sm z-0 pointer-events-none" />
 
-              <div 
-                onClick={() => navigateTo('landing')} 
-                className="flex items-center gap-2 cursor-pointer"
-              >
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#F26CA7] to-[#FFB6D9] flex items-center justify-center text-white shadow-sm">
-                  <Sparkles className="w-4 h-4" />
+          {/* Wrapper to contain layout above the overlay */}
+          <div className="relative z-10 flex flex-col lg:flex-row w-full min-h-screen">
+            {/* Mobile Navigation Header Bar */}
+            <header className="lg:hidden bg-[#0F0F11]/90 backdrop-blur-md text-white px-4 py-3 border-b border-zinc-800/80 sticky top-0 z-30 flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setIsMobileSidebarOpen(true)}
+                  className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                  aria-label="Open navigation menu"
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+
+                <div 
+                  onClick={() => navigateTo('landing')} 
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-black border border-black shadow-xs flex items-center justify-center p-1 shrink-0">
+                    <img
+                      src="/image/logo.png"
+                      alt="Aura Logo"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                  <span className="text-[20px] text-white font-logo tracking-tight">aura</span>
                 </div>
-                <span className="text-base font-black tracking-wider text-white font-mono">AURA</span>
               </div>
-            </div>
 
-            <button 
-              onClick={() => navigateTo('settings')}
-              className="p-1 rounded-full hover:ring-2 hover:ring-[#F26CA7]/50 transition-all cursor-pointer"
-            >
-              <Avatar src={user.avatarUrl} name={user.name} size="sm" />
-            </button>
-          </header>
+              <button 
+                onClick={() => navigateTo('settings')}
+                className="p-1 rounded-full hover:ring-2 hover:ring-[#F26CA7]/50 transition-all cursor-pointer"
+              >
+                <Avatar src={user.avatarUrl} name={user.name} size="sm" />
+              </button>
+            </header>
 
-          {/* Sidebar Navigation */}
-          <Sidebar 
-            currentRoute={currentRoute} 
-            onNavigate={navigateTo} 
-            user={user} 
-            isMobileOpen={isMobileSidebarOpen}
-            onCloseMobile={() => setIsMobileSidebarOpen(false)}
-          />
+            {/* Sidebar Navigation */}
+            <Sidebar 
+              currentRoute={currentRoute} 
+              onNavigate={navigateTo} 
+              user={user} 
+              isMobileOpen={isMobileSidebarOpen}
+              onCloseMobile={() => setIsMobileSidebarOpen(false)}
+              onLogout={logout}
+            />
 
-          {/* Main Dashboard Workspace */}
-          <main className="flex-1 min-w-0 p-5 overflow-y-auto">
-            {currentRoute === 'dashboard' && (
+            {/* Main Dashboard Workspace */}
+            <main className="flex-1 min-w-0 p-4 overflow-y-auto">
+              {currentRoute === 'dashboard' && (
               <OverviewView
                 user={user}
                 products={products}
@@ -249,6 +271,7 @@ export default function App() {
               <SubscriptionView
                 user={user}
                 onToast={(title, desc) => addToast(title, desc, 'info')}
+                onRefreshUser={reloadWorkspace}
               />
             )}
 
@@ -272,6 +295,8 @@ export default function App() {
                 onDeleteProduct={deleteProduct}
                 onUpdateAffiliatorStatus={updateAffiliatorStatus}
                 onUpdateAffiliator={updateAffiliator}
+                onDeleteAffiliator={deleteAffiliator}
+                onUpdateProductApproval={updateProductApproval}
                 activeTab={
                   currentRoute === 'admin-products'
                     ? 'products'
@@ -290,7 +315,7 @@ export default function App() {
               />
             )}
           </main>
-
+          </div>
         </div>
       )}
 

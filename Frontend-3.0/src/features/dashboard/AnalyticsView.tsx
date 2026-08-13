@@ -206,7 +206,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, product
         </div>
 
         {/* Mobile & Tablet Responsive Cards View (< lg breakpoint) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:hidden">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:hidden max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
           {products.map((prod) => (
             <div
               key={prod.id}
@@ -240,7 +240,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, product
         </div>
 
         {/* Desktop Table View (>= lg breakpoint) */}
-        <div className="hidden lg:block overflow-x-auto">
+        <div className="hidden lg:block overflow-x-auto max-h-[400px] overflow-y-auto custom-scrollbar">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-zinc-200 text-zinc-400 font-semibold uppercase tracking-wider">

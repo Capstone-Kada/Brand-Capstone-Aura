@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Menu, X, UserCheck, ChevronRight, LogIn } from 'lucide-react';
+import { Menu, X, ChevronRight, LogIn, UserCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RouteView } from '../../types';
 import { Button } from '../ui/UIComponents';
@@ -18,38 +18,53 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, onNavigate }) => {
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/35 backdrop-blur-md border-b border-zinc-200/60 transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+    <header className="fixed top-3 sm:top-5 inset-x-0 z-50 px-3 sm:px-6 pointer-events-none">
+      {/* Floating Glassmorphic Island Capsule (20% opacity with heavy blur) */}
+      <div className="pointer-events-auto max-w-5xl mx-auto rounded-full bg-white/20 backdrop-blur-[32px] border border-white/25 px-4 sm:px-6 py-2.5 sm:py-3 shadow-[0_12px_40px_rgba(0,0,0,0.06)] flex items-center justify-between transition-all duration-300">
         
         {/* Brand Logo */}
         <div
           onClick={() => onNavigate('landing')}
-          className="flex items-center gap-2.5 cursor-pointer group"
+          className="flex items-center gap-2.5 cursor-pointer group select-none"
         >
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#F26CA7] via-[#f788b9] to-[#FFB6D9] flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform">
-            <Sparkles className="w-5 h-5 fill-white/20" />
+          {/* Black Framed Logo Container */}
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-black border border-black shadow-xs flex items-center justify-center p-1.5 group-hover:scale-105 transition-transform">
+            <img
+              src="/image/logo.png"
+              alt="Aura Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
-          <span className="text-[28px] text-zinc-900 font-logo">aura</span>
+          <span className="text-[20px] text-zinc-900 font-logo tracking-tight">aura</span>
         </div>
 
-        {/* Desktop Navigation Links (Visible on Large Screens lg+) */}
-        <nav className="hidden lg:flex items-center gap-8 text-sm font-medium text-zinc-600">
-          <a href="#about" className="hover:text-[#F26CA7] transition-colors">
+        {/* Desktop Navigation Links */}
+        <nav className="hidden md:flex items-center gap-1 text-xs sm:text-sm font-medium text-zinc-700">
+          <a
+            href="#about"
+            className="px-3.5 py-1.5 rounded-full hover:text-[#F26CA7] hover:bg-black/5 transition-all"
+          >
             About Us
           </a>
-          <button onClick={() => onNavigate('landing')} className="hover:text-[#F26CA7] transition-colors cursor-pointer">
+          <a
+            href="#features"
+            className="px-3.5 py-1.5 rounded-full hover:text-[#F26CA7] hover:bg-black/5 transition-all"
+          >
             Features
-          </button>
-          <a href="#how-it-works" className="hover:text-[#F26CA7] transition-colors">
+          </a>
+          <a
+            href="#how-it-works"
+            className="px-3.5 py-1.5 rounded-full hover:text-[#F26CA7] hover:bg-black/5 transition-all"
+          >
             How It Works
           </a>
         </nav>
 
-        {/* Desktop Action Buttons (Visible on Large Screens lg+) */}
-        <div className="hidden lg:flex items-center gap-3">
+        {/* Desktop Action Buttons */}
+        <div className="hidden md:flex items-center gap-2">
           <button
             onClick={() => onNavigate('register')}
-            className="text-sm font-semibold text-zinc-700 hover:text-zinc-900 px-3 py-2 cursor-pointer transition-colors"
+            className="text-xs sm:text-sm font-semibold text-zinc-700 hover:text-zinc-950 px-4 py-2 rounded-xl hover:bg-black/5 transition-all cursor-pointer"
           >
             Sign Up
           </button>
@@ -64,51 +79,52 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, onNavigate }) => {
           </Button>
         </div>
 
-        {/* Tablet & Mobile Hamburger Toggle (Visible on lg:hidden) */}
-        <div className="flex lg:hidden items-center gap-2">
+        {/* Mobile Hamburger Toggle */}
+        <div className="flex md:hidden items-center">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label="Toggle navigation menu"
-            className="p-2.5 rounded-xl bg-zinc-100/80 hover:bg-zinc-200/80 text-zinc-800 transition-colors border border-zinc-200/80"
+            className="p-2 rounded-full bg-black/5 hover:bg-black/10 text-zinc-800 transition-colors"
           >
-            {mobileMenuOpen ? <X className="w-6 h-6 text-[#F26CA7]" /> : <Menu className="w-6 h-6" />}
+            {mobileMenuOpen ? <X className="w-5 h-5 text-[#F26CA7]" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </div>
 
-      {/* Tablet & Mobile Hamburger Dropdown Menu */}
+      {/* Mobile Floating Dropdown Card */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25, ease: 'easeInOut' }}
-            className="lg:hidden overflow-hidden bg-white/95 backdrop-blur-xl border-b border-zinc-200 shadow-xl"
+            initial={{ opacity: 0, y: -10, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.96 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="pointer-events-auto md:hidden mt-2 max-w-5xl mx-auto rounded-3xl bg-white/80 backdrop-blur-[32px] border border-white/20 shadow-[0_16px_50px_rgba(0,0,0,0.12)] p-5 overflow-hidden"
           >
-            <div className="max-w-7xl mx-auto px-6 py-6 space-y-4 divide-y divide-zinc-100">
+            <div className="space-y-3">
               
               {/* Navigation Links */}
-              <div className="space-y-1.5 pb-2">
+              <div className="space-y-1">
                 <a
                   href="#about"
                   onClick={() => handleNavClick()}
-                  className="flex items-center justify-between w-full text-left font-semibold text-zinc-800 hover:text-[#F26CA7] p-2.5 rounded-xl hover:bg-zinc-50 transition-colors"
+                  className="flex items-center justify-between w-full text-left text-sm font-semibold text-zinc-800 hover:text-[#F26CA7] p-3 rounded-2xl hover:bg-black/5 transition-colors"
                 >
                   <span>About Us</span>
                   <ChevronRight className="w-4 h-4 text-zinc-400" />
                 </a>
-                <button
-                  onClick={() => handleNavClick(() => onNavigate('landing'))}
-                  className="flex items-center justify-between w-full text-left font-semibold text-zinc-800 hover:text-[#F26CA7] p-2.5 rounded-xl hover:bg-zinc-50 transition-colors"
+                <a
+                  href="#features"
+                  onClick={() => handleNavClick()}
+                  className="flex items-center justify-between w-full text-left text-sm font-semibold text-zinc-800 hover:text-[#F26CA7] p-3 rounded-2xl hover:bg-black/5 transition-colors"
                 >
                   <span>Features</span>
                   <ChevronRight className="w-4 h-4 text-zinc-400" />
-                </button>
+                </a>
                 <a
                   href="#how-it-works"
                   onClick={() => handleNavClick()}
-                  className="flex items-center justify-between w-full text-left font-semibold text-zinc-800 hover:text-[#F26CA7] p-2.5 rounded-xl hover:bg-zinc-50 transition-colors"
+                  className="flex items-center justify-between w-full text-left text-sm font-semibold text-zinc-800 hover:text-[#F26CA7] p-3 rounded-2xl hover:bg-black/5 transition-colors"
                 >
                   <span>How It Works</span>
                   <ChevronRight className="w-4 h-4 text-zinc-400" />
@@ -116,7 +132,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, onNavigate }) => {
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-4 space-y-2.5">
+              <div className="pt-2 flex flex-col gap-2">
                 <Button
                   onClick={() => handleNavClick(() => onNavigate('login'))}
                   variant="primary"
@@ -131,7 +147,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute, onNavigate }) => {
                   variant="outline"
                   size="md"
                   icon={<UserCheck className="w-4 h-4" />}
-                  className="w-full justify-center bg-zinc-50 py-3"
+                  className="w-full justify-center bg-zinc-50/80 py-3"
                 >
                   Sign Up
                 </Button>

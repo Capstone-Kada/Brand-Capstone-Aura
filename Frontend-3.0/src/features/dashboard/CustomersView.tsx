@@ -21,8 +21,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ leads }) => {
       
       {/* Header */}
       <div>
-        <h1 className="text-xl sm:text-2xl font-black text-zinc-900">Customers & Leads</h1>
-        <p className="text-xs text-zinc-500 mt-0.5">Data customer yang melakukan AI Scan dan mengklik link affiliate produk rekomendasi</p>
+        <h1 className="text-xl sm:text-2xl font-black text-zinc-900">Audience</h1>
+        <p className="text-xs text-zinc-500 mt-0.5">Audience data from AI Scans and affiliate product link clicks</p>
       </div>
 
       {/* Filter */}
