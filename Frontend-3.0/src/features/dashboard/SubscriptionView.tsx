@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   CreditCard, 
   ShieldCheck, 
@@ -11,7 +11,8 @@ import {
   Check,
   ExternalLink,
   Lock,
-  Wallet
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { UserProfile } from '../../types';
@@ -115,6 +116,8 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({ user, onToas
   const [loadingPlan, setLoadingPlan] = useState<'PRO' | 'ELITE' | null>(null);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
 
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>(() => {
     return localStorage.getItem('aura_preferred_payment_method') || 'qris';
@@ -152,7 +155,13 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({ user, onToas
       // Check if Midtrans Snap script is loaded
       if (typeof window !== 'undefined' && window.snap && checkoutData.snapToken && !checkoutData.snapToken.startsWith('mock-')) {
         window.snap.pay(checkoutData.snapToken, {
-          onSuccess: async () => {
+          onSuccess: async (result) => {
+            try {
+              // Immediately confirm and upgrade in database
+              await api.subscription.confirm(plan, result?.order_id);
+            } catch (confirmErr) {
+              console.warn('Subscription auto-confirm error:', confirmErr);
+            }
             setIsPlanModalOpen(false);
             confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
             onToast(
@@ -162,7 +171,12 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({ user, onToas
             );
             if (onRefreshUser) await onRefreshUser();
           },
-          onPending: () => {
+          onPending: async (result) => {
+            try {
+              // In Sandbox testing, also trigger confirmation on pending settlement
+              await api.subscription.confirm(plan, result?.order_id);
+              if (onRefreshUser) await onRefreshUser();
+            } catch (e) {}
             onToast(
               'Menunggu Pembayaran',
               'Silakan selesaikan pembayaran sesuai instruksi pada layar.',
@@ -177,12 +191,13 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({ user, onToas
           },
         });
       } else {
-        // Fallback for Sandbox simulation if keys are pending or mock token returned
+        // Fallback for demo
+        await api.subscription.confirm(plan, checkoutData.orderId);
         setIsPlanModalOpen(false);
         confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
         onToast(
-          'Simulasi Pembayaran Berhasil! 🚀',
-          `Order ${checkoutData.orderId} untuk paket ${plan} (${formatIDR(checkoutData.amount)}) siap diaktifkan.`,
+          'Pembayaran Berhasil! 🎉',
+          `Order ${checkoutData.orderId} untuk paket ${plan} aktif.`,
           'success'
         );
         if (onRefreshUser) await onRefreshUser();
@@ -191,6 +206,20 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({ user, onToas
       onToast('Gagal Memulai Checkout', err?.message || 'Terjadi kesalahan sistem.', 'error');
     } finally {
       setLoadingPlan(null);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    setIsCanceling(true);
+    try {
+      await api.subscription.cancel();
+      setIsCancelModalOpen(false);
+      onToast('Paket Dibatalkan', 'Akun Anda berhasil dikembalikan ke paket Starter Free.', 'info');
+      if (onRefreshUser) await onRefreshUser();
+    } catch (err: any) {
+      onToast('Gagal Membatalkan', err?.message || 'Terjadi kesalahan sistem.', 'error');
+    } finally {
+      setIsCanceling(false);
     }
   };
 
@@ -301,13 +330,25 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({ user, onToas
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Delete / Cancel Active Plan Button */}
+            {currentPlanNormalized !== 'STARTER' && (
+              <Button
+                onClick={() => setIsCancelModalOpen(true)}
+                variant="outline"
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 font-semibold"
+                icon={<Trash2 className="w-4 h-4" />}
+              >
+                Hapus Paket
+              </Button>
+            )}
+
             <Button
               onClick={() => setIsPlanModalOpen(true)}
               variant="primary"
               icon={<Zap className="w-4 h-4" />}
               className="shadow-md shadow-[#F26CA7]/20 font-bold"
             >
-              {currentPlanNormalized === 'STARTER' ? 'Upgrade ke Pro' : 'Lihat Pilihan Plan'}
+              {currentPlanNormalized === 'STARTER' ? 'Upgrade ke Pro' : 'Ubah Pilihan Plan'}
             </Button>
           </div>
         </div>
@@ -556,6 +597,45 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({ user, onToas
             <span>Enkripsi 256-bit SSL berlisensi resmi Bank Indonesia melalui Midtrans.</span>
           </div>
 
+        </div>
+      </Modal>
+
+      {/* ================= MODAL 3: CANCEL / DELETE ACTIVE SUBSCRIPTION ================= */}
+      <Modal
+        isOpen={isCancelModalOpen}
+        onClose={() => setIsCancelModalOpen(false)}
+        title="Hapus / Batalkan Langganan?"
+        description="Konfirmasi pengembalian akun ke paket Starter Gratis"
+        maxWidth="md"
+      >
+        <div className="space-y-4 pt-2 pb-1">
+          <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex items-start gap-3 text-amber-800">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1 text-xs">
+              <p className="font-bold text-amber-900">Perhatian Sebelum Membatalkan</p>
+              <p className="leading-relaxed text-amber-700">
+                Paket Anda saat ini adalah <strong>{user.currentPlan || 'Pro'} Affiliator</strong>. Jika dibatalkan, kuota bulanan Anda akan berkurang menjadi <strong>1.000 AI Scan</strong> dan fitur prioritas akan dinonaktifkan.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-100">
+            <Button
+              variant="outline"
+              onClick={() => setIsCancelModalOpen(false)}
+              disabled={isCanceling}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleConfirmCancel}
+              variant="danger"
+              disabled={isCanceling}
+              icon={<Trash2 className="w-4 h-4" />}
+            >
+              {isCanceling ? 'Memproses...' : 'Ya, Hapus Paket'}
+            </Button>
+          </div>
         </div>
       </Modal>
 

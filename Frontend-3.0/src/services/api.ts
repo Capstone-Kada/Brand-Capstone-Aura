@@ -511,6 +511,10 @@ export const api = {
     plans: (): Promise<any[]> => unwrap(http.get('/subscriptions/plans')),
     checkout: (plan: 'PRO' | 'ELITE'): Promise<{ orderId: string; snapToken: string; redirectUrl: string; amount: number; plan: 'PRO' | 'ELITE' }> =>
       unwrap(http.post('/subscriptions/checkout', { plan })),
+    confirm: (plan: 'PRO' | 'ELITE', orderId?: string): Promise<any> =>
+      unwrap(http.post('/subscriptions/confirm', { plan, orderId })),
+    cancel: (): Promise<any> =>
+      unwrap(http.post('/subscriptions/cancel')),
   },
 };
 
