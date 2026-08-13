@@ -17,3 +17,6 @@ prisma/*.db-journal
 graphify-out/
 
 /generated/prisma
+
+# Supabase CLI local cache/link state — machine-specific, never commit
+supabase/.temp/

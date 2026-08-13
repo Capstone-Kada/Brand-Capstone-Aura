@@ -7,7 +7,7 @@ import type {
 } from '../interfaces/affiliator.repository.interface.js';
 
 type AffiliatorRow = AffiliatorProfile & {
-  user: { email: string; profile: { name: string | null } | null };
+  user: { email: string; isTwoFactorEnabled: boolean; profile: { name: string | null } | null };
 };
 
 const affiliatorInclude = {

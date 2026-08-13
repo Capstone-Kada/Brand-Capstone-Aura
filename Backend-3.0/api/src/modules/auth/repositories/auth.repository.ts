@@ -1,4 +1,11 @@
-import type { PasswordResetToken, PrismaClient, Role, User, RefreshToken } from '@prisma/client';
+import type {
+  EmailVerificationToken,
+  PasswordResetToken,
+  PrismaClient,
+  Role,
+  User,
+  RefreshToken,
+} from '@prisma/client';
 import type { IAuthRepository } from '../interfaces/auth.repository.interface.js';
 
 export class AuthRepository implements IAuthRepository {
@@ -17,6 +24,7 @@ export class AuthRepository implements IAuthRepository {
     passwordHash: string;
     role?: Role;
     name?: string;
+    isEmailVerified?: boolean;
     affiliator?: { handle: string; apiKey: string };
   }): Promise<User> {
     return this.db.user.create({
@@ -24,6 +32,7 @@ export class AuthRepository implements IAuthRepository {
         email: data.email,
         passwordHash: data.passwordHash,
         role: data.role ?? 'USER',
+        isEmailVerified: data.isEmailVerified ?? false,
         profile: {
           create: {
             name: data.name ?? null,
@@ -109,6 +118,37 @@ export class AuthRepository implements IAuthRepository {
     return this.db.user.update({
       where: { id: userId },
       data,
+    });
+  }
+
+  createEmailVerificationToken(data: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+  }): Promise<EmailVerificationToken> {
+    return this.db.emailVerificationToken.create({ data });
+  }
+
+  findEmailVerificationByHash(
+    tokenHash: string,
+  ): Promise<(EmailVerificationToken & { user: User }) | null> {
+    return this.db.emailVerificationToken.findUnique({
+      where: { tokenHash },
+      include: { user: true },
+    });
+  }
+
+  async markEmailVerificationUsed(id: string): Promise<void> {
+    await this.db.emailVerificationToken.update({
+      where: { id },
+      data: { usedAt: new Date() },
+    });
+  }
+
+  findLatestEmailVerificationForUser(userId: string): Promise<EmailVerificationToken | null> {
+    return this.db.emailVerificationToken.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
     });
   }
 }

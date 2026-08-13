@@ -1,22 +1,48 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, ArrowRight, Lock, Mail, User, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Sparkles, ArrowRight, Lock, Mail, User, ShieldCheck, CheckCircle2, MailCheck } from 'lucide-react';
 import { RouteView } from '../../types';
 import { Button, Input, Card, Badge } from '../../components/ui/UIComponents';
 
 const heroBgImage = '/image/Background.png';
 
+type LoginOrGoogleResult = { requires2FA?: boolean; userId?: string; requiresEmailVerification?: boolean } | void;
+
 interface AuthPagesProps {
   initialView: 'login' | 'register' | 'forgot-password';
   onNavigate: (route: RouteView) => void;
   onSuccess?: () => void;
-  onLoginAs?: (email: string, password: string) => Promise<{ requires2FA?: boolean; userId?: string } | void>;
+  onLoginAs?: (email: string, password: string) => Promise<LoginOrGoogleResult>;
   onVerify2FA?: (userId: string, token: string) => Promise<void>;
-  onRegister?: (email: string, password: string, name: string) => void;
-  onGoogleLogin?: (idToken: string) => Promise<{ requires2FA?: boolean; userId?: string } | void>;
+  onRegister?: (email: string, password: string, name: string) => Promise<{ requiresEmailVerification?: boolean; email?: string } | void>;
+  onGoogleLogin?: (idToken: string) => Promise<LoginOrGoogleResult>;
+  onResendVerification?: (email: string) => Promise<{ retryAfterSeconds?: number } | void>;
 }
 
-export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, onSuccess, onLoginAs, onVerify2FA, onRegister, onGoogleLogin }) => {
+const RESEND_COOLDOWN_STORAGE_PREFIX = 'aura_resend_cooldown:';
+
+/** Reads the persisted cooldown deadline for an email and returns seconds remaining (0 if none/expired). */
+function readCooldownSeconds(email: string): number {
+  if (!email) return 0;
+  const raw = localStorage.getItem(RESEND_COOLDOWN_STORAGE_PREFIX + email);
+  if (!raw) return 0;
+  const deadline = Number(raw);
+  const remaining = Math.ceil((deadline - Date.now()) / 1000);
+  return remaining > 0 ? remaining : 0;
+}
+
+function writeCooldownSeconds(email: string, seconds: number): void {
+  if (!email) return;
+  localStorage.setItem(RESEND_COOLDOWN_STORAGE_PREFIX + email, String(Date.now() + seconds * 1000));
+}
+
+function formatCooldown(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, onSuccess, onLoginAs, onVerify2FA, onRegister, onGoogleLogin, onResendVerification }) => {
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot-password'>(initialView);
   const [email, setEmail] = useState('kate@auraai.local');
   const [password, setPassword] = useState('Affiliator123!');
@@ -27,6 +53,24 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
   const [twoFactorToken, setTwoFactorToken] = useState('');
   const [twoFactorUserId, setTwoFactorUserId] = useState('');
   const [authError, setAuthError] = useState('');
+  const [verificationSentEmail, setVerificationSentEmail] = useState('');
+  const [isResending, setIsResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Whenever the "check your email" screen becomes active, pick up any cooldown
+  // already in flight for this address (e.g. from before a page refresh) and
+  // keep it ticking down every second while the screen is shown.
+  useEffect(() => {
+    if (!verificationSentEmail) {
+      setResendCooldown(0);
+      return;
+    }
+    setResendCooldown(readCooldownSeconds(verificationSentEmail));
+    const interval = setInterval(() => {
+      setResendCooldown(readCooldownSeconds(verificationSentEmail));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [verificationSentEmail]);
 
   const passwordRules = [
     { label: 'Minimal 8 karakter', ok: password.length >= 8 },
@@ -36,6 +80,10 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
     { label: 'Simbol (!@#$%)', ok: /[^A-Za-z0-9]/.test(password) },
   ];
   const isPasswordValid = passwordRules.every((rule) => rule.ok);
+
+  useEffect(() => {
+    setVerificationSentEmail('');
+  }, [authMode]);
 
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const googleClientId = (import.meta as unknown as { env: Record<string, string> }).env.VITE_GOOGLE_CLIENT_ID;
@@ -99,11 +147,23 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
         }, 800);
       } else if (authMode === 'register') {
         if (onRegister) {
-          onRegister(email, password, name);
-        } else {
-          if (onSuccess) onSuccess();
-          onNavigate('dashboard');
+          try {
+            const result = await onRegister(email, password, name);
+            if (result && result.requiresEmailVerification) {
+              const targetEmail = result.email || email;
+              if (result.retryAfterSeconds) {
+                writeCooldownSeconds(targetEmail, result.retryAfterSeconds);
+              }
+              setVerificationSentEmail(targetEmail);
+            }
+          } catch (e) {
+            // registration failure is already surfaced via toast (e.g. "Email is already registered")
+          }
+          setIsLoading(false);
+          return;
         }
+        if (onSuccess) onSuccess();
+        onNavigate('dashboard');
         setIsLoading(false);
       } else {
         if (requires2FA && onVerify2FA) {
@@ -126,6 +186,11 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
             setIsLoading(false);
             return;
           }
+          if (result && result.requiresEmailVerification) {
+            setVerificationSentEmail(email);
+            setIsLoading(false);
+            return;
+          }
         } else {
           if (onSuccess) onSuccess();
           onNavigate('dashboard');
@@ -135,6 +200,19 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
     } catch (e) {
       setAuthError('Invalid credentials. Please try again.');
       setIsLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!onResendVerification || !verificationSentEmail || resendCooldown > 0) return;
+    setIsResending(true);
+    try {
+      const result = await onResendVerification(verificationSentEmail);
+      const seconds = result?.retryAfterSeconds ?? 600;
+      writeCooldownSeconds(verificationSentEmail, seconds);
+      setResendCooldown(seconds);
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -170,22 +248,52 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
         <Card className="p-8 shadow-xl border-zinc-200">
           
           {/* Header titles */}
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-zinc-900">
-              {authMode === 'login' && !requires2FA && 'Welcome Back'}
-              {authMode === 'login' && requires2FA && 'Two-Factor Authentication'}
-              {authMode === 'register' && 'Start Your 14-Day Free Trial'}
-              {authMode === 'forgot-password' && 'Reset Your Password'}
-            </h2>
-            <p className="text-xs text-zinc-500 mt-1">
-              {authMode === 'login' && !requires2FA && 'Sign in to access your BeautyAI Affiliator dashboard.'}
-              {authMode === 'login' && requires2FA && 'Enter the 6-digit code from your authenticator app.'}
-              {authMode === 'register' && 'Create your account to start converting followers with AI.'}
-              {authMode === 'forgot-password' && 'Enter your registered email address.'}
-            </p>
-          </div>
+          {!verificationSentEmail && (
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-zinc-900">
+                {authMode === 'login' && !requires2FA && 'Welcome Back'}
+                {authMode === 'login' && requires2FA && 'Two-Factor Authentication'}
+                {authMode === 'register' && 'Start Your 14-Day Free Trial'}
+                {authMode === 'forgot-password' && 'Reset Your Password'}
+              </h2>
+              <p className="text-xs text-zinc-500 mt-1">
+                {authMode === 'login' && !requires2FA && 'Sign in to access your BeautyAI Affiliator dashboard.'}
+                {authMode === 'login' && requires2FA && 'Enter the 6-digit code from your authenticator app.'}
+                {authMode === 'register' && 'Create your account to start converting followers with AI.'}
+                {authMode === 'forgot-password' && 'Enter your registered email address.'}
+              </p>
+            </div>
+          )}
 
-          {resetSent && authMode === 'forgot-password' ? (
+          {verificationSentEmail ? (
+            <div className="p-4 bg-pink-50 border border-pink-200 rounded-2xl text-center space-y-3">
+              <MailCheck className="w-8 h-8 text-[#F26CA7] mx-auto" />
+              <h3 className="text-sm font-bold text-zinc-900">Verify Your Email</h3>
+              <p className="text-xs text-zinc-500">
+                We sent a verification link to <span className="font-semibold">{verificationSentEmail}</span>.
+                Click the link to activate your account, then come back and sign in.
+              </p>
+              <Button
+                onClick={handleResendVerification}
+                variant="outline"
+                className="w-full mt-2"
+                disabled={isResending || !onResendVerification || resendCooldown > 0}
+              >
+                {isResending
+                  ? 'Sending...'
+                  : resendCooldown > 0
+                    ? `Resend available in ${formatCooldown(resendCooldown)}`
+                    : 'Resend Verification Email'}
+              </Button>
+              <button
+                type="button"
+                onClick={() => { setVerificationSentEmail(''); setAuthMode('login'); }}
+                className="text-xs text-[#FF3366] font-medium hover:underline"
+              >
+                Back to Sign In
+              </button>
+            </div>
+          ) : resetSent && authMode === 'forgot-password' ? (
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-3">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
               <h3 className="text-sm font-bold text-emerald-800">Password Reset Link Sent!</h3>
@@ -306,7 +414,7 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
             </form>
           )}
 
-          {authMode !== 'forgot-password' && !requires2FA && (
+          {authMode !== 'forgot-password' && !requires2FA && !verificationSentEmail && (
             <div className="mt-5 pt-5 border-t border-zinc-100 text-center space-y-3">
               <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Or continue with</p>
 
@@ -326,7 +434,7 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
             </div>
           )}
 
-            {!requires2FA && (
+            {!requires2FA && !verificationSentEmail && (
               <div className="mt-6 text-center text-sm text-zinc-600">
                 {authMode === 'login' ? (
                   <p>
