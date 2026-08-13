@@ -1,6 +1,0 @@
-{
-  "name": "Aura",
-  "description": "B2B AI Personalization & Affiliate Conversion Platform for Beauty Affiliators",
-  "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
