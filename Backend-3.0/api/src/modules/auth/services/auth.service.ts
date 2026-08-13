@@ -249,6 +249,9 @@ export class AuthService {
   async generate2FA(userId: string, email: string): Promise<{ secret: string; qrCodeDataUrl: string }> {
     const user = await this.authRepository.findById(userId);
     if (!user) throw new UnauthorizedError('User not found');
+    if (user.isTwoFactorEnabled) {
+      throw new ConflictError('2FA is already enabled. Disable it before setting up a new device.');
+    }
 
     const secret = speakeasy.generateSecret({ name: `KADA-Capstone (${email})` });
     const qrCodeDataUrl = await qrcode.toDataURL(secret.otpauth_url!);
@@ -266,6 +269,7 @@ export class AuthService {
       secret: user.twoFactorSecret,
       encoding: 'base32',
       token,
+      window: 1,
     });
     if (!isValid) throw new ValidationError('Invalid 2FA code');
 
@@ -282,6 +286,7 @@ export class AuthService {
       secret: user.twoFactorSecret,
       encoding: 'base32',
       token,
+      window: 1,
     });
     if (!isValid) throw new UnauthorizedError('Invalid 2FA code');
 

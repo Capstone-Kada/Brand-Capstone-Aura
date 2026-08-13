@@ -16,7 +16,7 @@ interface AuthPagesProps {
   onGoogleLogin?: (idToken: string) => Promise<{ requires2FA?: boolean; userId?: string } | void>;
 }
 
-export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, onSuccess, onLoginAs, onRegister, onGoogleLogin }) => {
+export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, onSuccess, onLoginAs, onVerify2FA, onRegister, onGoogleLogin }) => {
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot-password'>(initialView);
   const [email, setEmail] = useState('kate@auraai.local');
   const [password, setPassword] = useState('Affiliator123!');

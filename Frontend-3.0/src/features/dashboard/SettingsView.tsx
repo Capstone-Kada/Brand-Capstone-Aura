@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, Bell, Key, CreditCard, ShieldCheck, Copy, RefreshCw, Check } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { Card, Button, Input, Tabs, Avatar, Badge } from '../../components/ui/UIComponents';
@@ -35,6 +35,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Security & 2FA
   const [is2FAEnabled, setIs2FAEnabled] = useState(user.isTwoFactorEnabled || false);
+  useEffect(() => {
+    setIs2FAEnabled(user.isTwoFactorEnabled || false);
+  }, [user.isTwoFactorEnabled]);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [setupSecret, setSetupSecret] = useState('');
   const [twoFactorToken, setTwoFactorToken] = useState('');
