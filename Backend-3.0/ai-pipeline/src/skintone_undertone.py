@@ -210,12 +210,61 @@ def classify_undertone(a_value: float, b_value: float) -> Dict[str, object]:
     }
 
 
+def validate_human_skin_pigment(
+    samples: List[SkinRoiSample], l_val: float, a_val: float, b_val: float
+) -> None:
+    """
+    Human Skin Range Validator:
+    Memastikan warna yang diekstraksi dari wajah berada dalam batas biologis
+    kulit manusia (semua ras/etnis global), dan menolak warna anomali seperti
+    alien abu-abu/hijau/biru/ungu, zombie, topeng karet, patung batu, atau CGI.
+    """
+    # 1. Cek pigmen CIELAB:
+    # Kulit manusia alami (dari Very Light sampai Deep) selalu mengandung hemoglobin (a* > 0)
+    # dan melanin/karotenoid (b* > 0).
+    # Alien abu-abu/pucat fiksi atau avatar berkulit dingin memiliki a* <= 1.0 atau b* <= 1.0.
+    if a_val < 1.2 or b_val < 1.2:
+        raise ValueError(
+            "Warna kulit tidak memiliki pigmen biologis manusia alami (terdeteksi warna abu-abu/kebiruan anomali/alien)."
+        )
+
+    # 2. Cek rata-rata warna HSV & BGR pada seluruh ROI yang valid:
+    valid_samples = [s for s in samples if s.valid_pixel_ratio > 0]
+    if not valid_samples:
+        raise ValueError("Tidak ada area kulit yang cukup terang atau bebas bayangan untuk dianalisis.")
+
+    avg_h = sum(s.hsv[0] for s in valid_samples) / len(valid_samples)
+    avg_s = sum(s.hsv[1] for s in valid_samples) / len(valid_samples)
+    avg_bgr = [
+        sum(s.mean_bgr[i] for s in valid_samples) / len(valid_samples) for i in range(3)
+    ]
+    b_mean, g_mean, r_mean = avg_bgr
+
+    # 3. Cek rasio channel BGR: Pada kulit manusia alami, channel Merah selalu dominan (R >= G dan R >= B).
+    # Jika Blue atau Green lebih tinggi secara signifikan dari Red -> Alien/Filter warna ekstrem.
+    if r_mean < g_mean * 0.92 or r_mean < b_mean * 0.92:
+        raise ValueError(
+            "Spektrum warna kulit tidak wajar (terdeteksi dominansi warna hijau/biru/alien)."
+        )
+
+    # 4. Cek rentang Hue di HSV (skala OpenCV 0-179):
+    # Spektrum kulit manusia normal: Hue 0 - 28 (merah-oranye-kuning) atau 168 - 179 (ujung merah).
+    # Rentang 30 - 165 adalah spektrum hijau, cyan, biru murni, ungu, magenta.
+    if (30 <= avg_h <= 165) and avg_s > 25:
+        raise ValueError(
+            "Warna kulit berada di luar rentang spektrum manusia (terdeteksi warna hijau/biru/ungu fiksi)."
+        )
+
+
 def analyze_skin(
     image_bgr_original: np.ndarray, landmarks_px: List[Tuple[int, int, float]]
 ) -> Dict[str, object]:
-    """Fungsi orkestrasi tingkat tinggi: sampling ROI -> agregasi -> klasifikasi."""
+    """Fungsi orkestrasi tingkat tinggi: sampling ROI -> agregasi -> validasi biologis -> klasifikasi."""
     samples = sample_skin_roi(image_bgr_original, landmarks_px)
     l_val, a_val, b_val = aggregate_lab_from_samples(samples)
+
+    # HUMAN SKIN RANGE VALIDATOR
+    validate_human_skin_pigment(samples, l_val, a_val, b_val)
 
     skintone_result = classify_skintone(l_val)
     undertone_result = classify_undertone(a_val, b_val)

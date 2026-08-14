@@ -171,6 +171,21 @@ def compute_face_metrics(landmarks_px: List[Tuple[int, int, float]]) -> FaceMetr
     )
 
 
+def validate_human_face_geometry(metrics: FaceMetrics) -> None:
+    """
+    Validasi proporsi struktur wajah manusia:
+    Menolak gambar makhluk/alien/CGI dengan rasio tengkorak yang tidak wajar (misal dahi raksasa + dagu mikroskopis).
+    """
+    if metrics.forehead_to_jaw_ratio > 3.0 or metrics.forehead_to_jaw_ratio < 0.35:
+        raise ValueError(
+            "Proporsi wajah di luar batas manusia normal (rasio dahi terhadap rahang anomali/alien)."
+        )
+    if metrics.length_to_cheekbone_ratio > 2.8 or metrics.length_to_cheekbone_ratio < 0.5:
+        raise ValueError(
+            "Proporsi wajah di luar batas manusia normal (rasio panjang terhadap lebar wajah anomali)."
+        )
+
+
 def classify_face_shape(metrics: FaceMetrics) -> Dict[str, object]:
     """
     Klasifikasi bentuk wajah berbasis threshold rasio + fitur geometris.
@@ -204,6 +219,7 @@ def classify_face_shape(metrics: FaceMetrics) -> Dict[str, object]:
     fitur, melainkan overlap nyata pada dataset kalibrasi -- Heart & Oval
     di foto manusia sungguhan memang sering ambigu bahkan bagi mata manusia.
     """
+    validate_human_face_geometry(metrics)
     length_to_cheekbone = metrics.length_to_cheekbone_ratio
     jaw_to_cheekbone = metrics.jaw_to_cheekbone_ratio
     forehead_to_cheekbone = metrics.forehead_to_cheekbone_ratio
