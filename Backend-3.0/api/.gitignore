@@ -1,19 +1,30 @@
+# Dependencies
 node_modules/
+
+# Build output & TypeScript
 dist/
 coverage/
+*.tsbuildinfo
+
+# Local Uploads
 uploads/*
 !uploads/.gitkeep
+
+# Database & Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Environment & Secrets
 .env
 .env.local
+!.env.example
+
+# Logs & IDE
 *.log
 .DS_Store
 .idea/
 .vscode/
-*.tsbuildinfo
-prisma/*.db
-prisma/*.db-journal
-
-# Graphify knowledge-graph output (generated locally, do not commit)
+.claude/
 graphify-out/
 
 /generated/prisma

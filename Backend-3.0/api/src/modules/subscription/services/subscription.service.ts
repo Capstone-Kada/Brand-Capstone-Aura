@@ -53,8 +53,13 @@ export class SubscriptionService {
   ) {}
 
   async checkout(affiliatorId: string, input: CheckoutInput): Promise<CheckoutResponseDto> {
-    const profile = await this.db.affiliatorProfile.findUnique({
-      where: { id: affiliatorId },
+    const profile = await this.db.affiliatorProfile.findFirst({
+      where: {
+        OR: [
+          { id: affiliatorId },
+          { userId: affiliatorId },
+        ],
+      },
       include: { user: { include: { profile: true } } },
     });
 
@@ -67,8 +72,8 @@ export class SubscriptionService {
       throw new ValidationError('Invalid subscription plan selected');
     }
 
-    // Format order ID: SUB-<PLAN>-<AFFILIATOR_ID>-<TIMESTAMP>
-    const orderId = `SUB-${input.plan}-${profile.id.replace(/-/g, '')}-${Date.now()}`;
+    // Format order ID: AURA-<PLAN>-<TIMESTAMP>-<SHORT_ID> (Midtrans max 50 chars)
+    const orderId = `AURA-${input.plan}-${Date.now()}-${profile.id.slice(0, 8)}`;
 
     const snapResult = await this.midtransService.createTransaction({
       orderId,
@@ -154,5 +159,64 @@ export class SubscriptionService {
     }
 
     return { success: true, message: 'Payment processed successfully' };
+  }
+
+  async confirmPayment(affiliatorId: string, input: { plan: 'PRO' | 'ELITE'; orderId?: string }): Promise<any> {
+    const planConfig = SUBSCRIPTION_PLANS[input.plan];
+    if (!planConfig) {
+      throw new ValidationError('Invalid subscription plan');
+    }
+
+    const profile = await this.db.affiliatorProfile.findFirst({
+      where: {
+        OR: [
+          { id: affiliatorId },
+          { userId: affiliatorId },
+        ],
+      },
+    });
+
+    if (!profile) {
+      throw new NotFoundError('Affiliator profile not found');
+    }
+
+    const updated = await this.db.affiliatorProfile.update({
+      where: { id: profile.id },
+      data: {
+        tier: input.plan,
+        planStatus: 'ACTIVE',
+        monthlyScanLimit: planConfig.monthlyScanLimit,
+      },
+    });
+
+    logger.info(`Affiliator ${profile.id} confirmed and upgraded to ${input.plan} Plan!`);
+    return updated;
+  }
+
+  async cancelSubscription(affiliatorId: string): Promise<any> {
+    const profile = await this.db.affiliatorProfile.findFirst({
+      where: {
+        OR: [
+          { id: affiliatorId },
+          { userId: affiliatorId },
+        ],
+      },
+    });
+
+    if (!profile) {
+      throw new NotFoundError('Affiliator profile not found');
+    }
+
+    const updated = await this.db.affiliatorProfile.update({
+      where: { id: profile.id },
+      data: {
+        tier: 'STARTER',
+        planStatus: 'TRIALING',
+        monthlyScanLimit: 1000,
+      },
+    });
+
+    logger.info(`Affiliator ${profile.id} canceled plan and returned to STARTER.`);
+    return updated;
   }
 }

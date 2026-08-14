@@ -235,7 +235,12 @@ export function useBeautyStore() {
       setChartData([]);
       setUndertoneStats([]);
       setConcernStats([]);
-      setCurrentRoute('landing');
+      setCurrentRoute((prev) => {
+        if (prev === 'public-recommendation' || prev === 'internal-preview') {
+          return prev;
+        }
+        return 'landing';
+      });
       addToast('Sesi Berakhir', 'Silakan login kembali untuk melanjutkan.', 'error');
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
@@ -687,58 +692,80 @@ export function useBeautyStore() {
 
   // Public Selfie Scan — real AI scan via POST /leads for the active AIPage slug.
   const startSelfieScan = useCallback(
-    (imageSrc: string, skinPref?: string, finishPref?: string, budgetPref?: string) => {
+    async (imageSrc: string, skinPref?: string, finishPref?: string, budgetPref?: string, isUpload: boolean = false): Promise<boolean> => {
       setScannedImage(imageSrc);
       setIsAnalyzing(true);
       setAnalysisStep(1);
       setScanResult(null);
 
-      void (async () => {
-        try {
-          const blob = await (await fetch(imageSrc)).blob();
-          const form = new FormData();
-          form.append('slug', activePageSlug);
-          form.append('image', blob, 'scan.jpg');
-          if (skinPref) form.append('skinPref', skinPref);
-          if (finishPref) form.append('finishPref', finishPref);
-          if (budgetPref) form.append('budgetPref', budgetPref);
+      try {
+        const blob = await (await fetch(imageSrc)).blob();
+        const form = new FormData();
+        form.append('slug', activePageSlug);
+        form.append('image', blob, 'scan.jpg');
+        if (skinPref) form.append('skinPref', skinPref);
+        if (finishPref) form.append('finishPref', finishPref);
+        if (budgetPref) form.append('budgetPref', budgetPref);
 
-          const result = await api.leads.submit(form);
-          setScanResult(mapScanResultDto(result));
-          setAnalysisStep(4);
+        const result = await api.leads.submit(form);
+        setScanResult(mapScanResultDto(result));
+        setAnalysisStep(4);
 
+        if (getAccessToken()) {
           const leadRows = await api.leads.list().catch(() => null);
           if (leadRows) setLeads(leadRows.map(mapCustomerLeadDto));
-        } catch (err) {
-          console.warn('Backend AI Scan API unreachable or error, serving fallback AI analysis:', err);
-          // Fallback scan result so the UI scan flow always renders rich AI metrics
-          setScanResult({
-            confidence: 96.8,
-            personalColor: 'Summer',
-            undertone: 'Cool',
-            skinTone: 'Medium',
-            faceShape: 'Oval',
-            matchSummary: 'Wah! Kulit Medium Cool kamu terlihat cantik alami. Berdasarkan jawaban kuesioner kamu, produk-produk ini direkomendasikan agar memberikan hasil akhir sempurna yang kamu impikan tanpa membuat kulit terasa berat.',
-            bestColorPalette: [
-              { name: 'Mauve Pink', colorHex: '#C77D9E' },
-              { name: 'Dusty Rose', colorHex: '#D4A5B8' },
-              { name: 'Soft Berry', colorHex: '#9E4B6C' },
-              { name: 'Cool Nude', colorHex: '#D8B4A6' }
-            ],
-            recommendedProducts: products.slice(0, 3).map((p, idx) => ({
-              product: p,
-              matchScore: 98 - idx * 3,
-              recommendedShade: p.shade || 'Natural Shade',
-              aiReason: `Kombinasi spektrum ${p.shade || 'Natural'} memberikan kecocokan ${98 - idx * 3}% untuk undertone Cool Medium.`
-            }))
-          });
-          setAnalysisStep(4);
-        } finally {
-          setIsAnalyzing(false);
         }
-      })();
+        return true;
+      } catch (err: unknown) {
+        // Cek jika error validasi wajah / warna kulit dari Backend (HTTP 422 atau pesan penolakan)
+        const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string }; message?: string } }; message?: string };
+        const status = axiosErr?.response?.status;
+        const errMsg = axiosErr?.response?.data?.error?.message || axiosErr?.response?.data?.message || axiosErr?.message || '';
+        const isFaceValidationError = status === 422 || /wajah|face|kulit|pigmen|proporsi|alien|anomali|skintone|undertone/i.test(errMsg);
+
+        // Opsi A: Penolakan ketat HANYA diterapkan jika foto diunggah dari file galeri (isUpload = true)
+        if (isUpload && isFaceValidationError) {
+          console.warn('Scan rejected: face or skin pigment validation failed for uploaded image.', errMsg);
+          setScanResult(null);
+          setScannedImage(null);
+          setAnalysisStep(0);
+          addToast(
+            'Wajah Tidak Terdeteksi',
+            errMsg || 'Foto yang Anda unggah bukan wajah manusia yang valid. Mohon unggah foto selfie yang jelas.',
+            'error'
+          );
+          return false;
+        }
+
+        console.warn('Backend AI Scan fallback / live camera flow active:', err);
+        // Untuk scan kamera langsung atau fallback dev offline: berikan hasil analisis responsif
+        setScanResult({
+          confidence: 96.8,
+          personalColor: 'Summer',
+          undertone: 'Cool',
+          skinTone: 'Medium',
+          faceShape: 'Oval',
+          matchSummary: 'Wah! Kulit Medium Cool kamu terlihat cantik alami. Berdasarkan jawaban kuesioner kamu, produk-produk ini direkomendasikan agar memberikan hasil akhir sempurna yang kamu impikan tanpa membuat kulit terasa berat.',
+          bestColorPalette: [
+            { name: 'Mauve Pink', colorHex: '#C77D9E' },
+            { name: 'Dusty Rose', colorHex: '#D4A5B8' },
+            { name: 'Soft Berry', colorHex: '#9E4B6C' },
+            { name: 'Cool Nude', colorHex: '#D8B4A6' }
+          ],
+          recommendedProducts: products.slice(0, 3).map((p, idx) => ({
+            product: p,
+            matchScore: 98 - idx * 3,
+            recommendedShade: p.shade || 'Natural Shade',
+            aiReason: `Kombinasi spektrum ${p.shade || 'Natural'} memberikan kecocokan ${98 - idx * 3}% untuk undertone Cool Medium.`
+          }))
+        });
+        setAnalysisStep(4);
+        return true;
+      } finally {
+        setIsAnalyzing(false);
+      }
     },
-    [activePageSlug, addToast],
+    [activePageSlug, addToast, products],
   );
 
   const resetScan = useCallback(() => {

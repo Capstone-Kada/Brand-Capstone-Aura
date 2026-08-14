@@ -90,8 +90,11 @@ http.interceptors.response.use(
         return http(originalRequest);
       }
 
+      const hadToken = Boolean(getAccessToken() || getRefreshToken());
       setTokens(null, null);
-      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      if (hadToken) {
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      }
     }
 
     return Promise.reject(error);
@@ -515,6 +518,10 @@ export const api = {
     plans: (): Promise<any[]> => unwrap(http.get('/subscriptions/plans')),
     checkout: (plan: 'PRO' | 'ELITE'): Promise<{ orderId: string; snapToken: string; redirectUrl: string; amount: number; plan: 'PRO' | 'ELITE' }> =>
       unwrap(http.post('/subscriptions/checkout', { plan })),
+    confirm: (plan: 'PRO' | 'ELITE', orderId?: string): Promise<any> =>
+      unwrap(http.post('/subscriptions/confirm', { plan, orderId })),
+    cancel: (): Promise<any> =>
+      unwrap(http.post('/subscriptions/cancel')),
   },
 };
 
