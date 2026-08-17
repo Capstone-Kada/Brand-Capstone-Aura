@@ -170,7 +170,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         handle: editAffHandle,
         email: editAffEmail,
         niche: editAffNiche,
-        tier: editAffTier,
+        tier: editAffTier.toUpperCase(),
         followersCount: editAffFollowers,
         totalScansGenerated: parseInt(editAffScans) || 0,
         totalClicksGenerated: parseInt(editAffClicks) || 0,
