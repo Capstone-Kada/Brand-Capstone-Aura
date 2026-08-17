@@ -21,6 +21,7 @@ export const appConfig = {
   frontendUrl: config.FRONTEND_URL.replace(/\/$/, ''),
   email: {
     functionSecret: config.EMAIL_FUNCTION_SECRET,
+    fromAddress: config.EMAIL_FROM,
     /** True when secret is present */
     isConfigured: Boolean(config.EMAIL_FUNCTION_SECRET),
   },

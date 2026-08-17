@@ -73,6 +73,7 @@ function createEmailService(): IEmailService {
     // Reusing the existing functionSecret config as the Resend API Key to avoid changing environment variables
     return new ResendEmailService(
       appConfig.email.functionSecret as string,
+      appConfig.email.fromAddress as string,
     );
   }
   return new ConsoleEmailService();

@@ -30,6 +30,7 @@ const envSchema = z.object({
   // emailing it (dev/CI only).
   EMAIL_FUNCTION_URL: z.string().url().optional(),
   EMAIL_FUNCTION_SECRET: z.string().min(1).optional(),
+  EMAIL_FROM: z.string().default('Aura <onboarding@resend.dev>'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),

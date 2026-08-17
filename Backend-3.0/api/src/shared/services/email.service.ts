@@ -10,7 +10,10 @@ export interface IEmailService {
 }
 
 export class ResendEmailService implements IEmailService {
-  constructor(private readonly apiKey: string) {}
+  constructor(
+    private readonly apiKey: string,
+    private readonly fromAddress: string,
+  ) {}
 
   async sendVerificationEmail(to: string, verifyUrl: string): Promise<void> {
     const response = await fetch('https://api.resend.com/emails', {
@@ -20,7 +23,7 @@ export class ResendEmailService implements IEmailService {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
-        from: 'Aura <onboarding@resend.dev>',
+        from: this.fromAddress,
         to: [to],
         subject: 'Verify your Aura account',
         html: buildVerificationEmailHtml(verifyUrl),
