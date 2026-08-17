@@ -42,7 +42,6 @@ import { Button, Card, Badge, Progress, Modal } from '../../components/ui/UIComp
 import { PremiumLoader } from '../../components/ui/PremiumLoader';
 import { api, mapListingToProduct, type PublicAIPageDto } from '../../services/api';
 import confetti from 'canvas-confetti';
-import { MOCK_PRODUCTS } from '../../services/mockData';
 
 interface PublicAIExperienceProps {
   user: UserProfile;
@@ -135,8 +134,6 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     };
   }, [pageSlug]);
 
-  const baseProducts = publicPageData && publicPageData.featuredListings.length > 0 ? publicPageData.featuredListings.map(mapListingToProduct) : productsProp;
-  const products = baseProducts.length > 0 ? baseProducts : MOCK_PRODUCTS;
   const creator = publicPageData
     ? {
         name: publicPageData.creatorName || publicPageData.title,
@@ -380,15 +377,21 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
       });
     }, 35);
 
-    // Run real AI analysis in backend
+    // Run real AI analysis in backend. The analysis screen should read as a
+    // deliberate ~8s process regardless of how fast the API actually responds.
+    const MIN_SCAN_DURATION_MS = 8000;
     try {
+      const minDuration = new Promise<void>((resolve) => setTimeout(resolve, MIN_SCAN_DURATION_MS));
       const scanPromise = onStartScan(imgUrl, undefined, undefined, undefined, isUpload);
-      const success = scanPromise instanceof Promise ? await scanPromise : true;
-      
+      const [success] = await Promise.all([
+        scanPromise instanceof Promise ? scanPromise : Promise.resolve(true),
+        minDuration,
+      ]);
+
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
 
-      if (success === false && isUpload) {
-        // Upload photo rejected by validation (Option A)!
+      if (success === false) {
+        // Rejected by backend validation (no face detected, or not a valid human face).
         setCapturedImage(null);
         setScanProgress(0);
         setCurrentStep('camera-guide');
@@ -403,16 +406,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
       }, 350);
     } catch {
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-      if (isUpload) {
-        setCapturedImage(null);
-        setScanProgress(0);
-        setCurrentStep('camera-guide');
-      } else {
-        setScanProgress(100);
-        setTimeout(() => {
-          setCurrentStep('select-area');
-        }, 350);
-      }
+      setCapturedImage(null);
+      setScanProgress(0);
+      setCurrentStep('camera-guide');
     }
   };
 
@@ -473,24 +469,18 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   };
 
   const getRelevantProducts = () => {
-    let baseProducts = scanResult && scanResult.recommendedProducts.length > 0
-      ? scanResult.recommendedProducts.map((m) => m.product)
-      : products;
+    // Sourced strictly from the backend's already affiliator-scoped, budget-filtered
+    // recommendations — never the wider unfiltered catalog. If nothing matches for
+    // the selected category (or at all), the result is honestly empty, not padded
+    // with real-but-mismatched (wrong price/category) products.
+    const baseProducts = scanResult ? scanResult.recommendedProducts.map((m) => m.product) : [];
 
     if (selectedArea === 'bibir') {
-      let lips = baseProducts.filter((p) => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category));
-      // If AI didn't return any lip products, fallback to searching the entire affiliator catalog
-      if (lips.length === 0) {
-        lips = products.filter((p) => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category));
-      }
+      const lips = baseProducts.filter((p) => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category));
       return lips.length > 0 ? lips : baseProducts;
     }
 
-    let face = baseProducts.filter((p) => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer', 'Eyeshadow'].includes(p.category));
-    // If AI didn't return any face products, fallback to searching the entire affiliator catalog
-    if (face.length === 0) {
-      face = products.filter((p) => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer', 'Eyeshadow'].includes(p.category));
-    }
+    const face = baseProducts.filter((p) => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer', 'Eyeshadow'].includes(p.category));
     return face.length > 0 ? face : baseProducts;
   };
 
@@ -1889,6 +1879,15 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                             {/* Decorative background glow for the robot */}
                             <div className="absolute -right-4 bottom-0 w-48 h-48 bg-rose-200/40 rounded-full blur-3xl pointer-events-none" />
                           </div>
+
+                          {getRelevantProducts().length === 0 && (
+                            <div className="rounded-3xl border border-zinc-100 shadow-sm bg-white p-6 text-center">
+                              <p className="text-sm font-bold text-[#1D1B26]">No matching products yet</p>
+                              <p className="text-xs text-[#61657A] mt-1">
+                                This creator doesn't have a product in this category/budget in their catalog right now — check back soon!
+                              </p>
+                            </div>
+                          )}
 
                           <div className="overflow-x-auto rounded-3xl border border-zinc-100 shadow-sm bg-white pt-5 pb-2 px-2">
                             <div className="min-w-[700px]">

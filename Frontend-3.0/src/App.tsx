@@ -38,6 +38,7 @@ export default function App() {
     updateAffiliator,
     deleteAffiliator,
     updateProfile,
+    uploadAvatar,
     regenerateApiKey,
     products,
     masterCatalog,
@@ -294,6 +295,7 @@ export default function App() {
               <SettingsView
                 user={user}
                 onUpdateProfile={updateProfile}
+                onUploadAvatar={uploadAvatar}
                 onRegenerateKey={regenerateApiKey}
                 onCopyLink={handleCopyLink}
                 onToast={(title, desc) => addToast(title, desc, 'info')}

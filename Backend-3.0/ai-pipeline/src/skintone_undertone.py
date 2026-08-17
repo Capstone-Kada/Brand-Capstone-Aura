@@ -186,13 +186,21 @@ def classify_undertone(a_value: float, b_value: float) -> Dict[str, object]:
          sisi secara signifikan -> diklasifikasikan Neutral.
 
     PARAMETER THRESHOLD WAJIB DIKALIBRASI:
-    Angka ambang 5.0 adalah estimasi awal berbasis pemahaman teori warna,
+    Angka ambang di bawah adalah estimasi berbasis pemahaman teori warna,
     BUKAN hasil validasi statistik pada dataset nyata. Developer harus
     menguji pada sampel wajah dengan undertone yang sudah diverifikasi
     manual oleh pakar kecantikan/colorist untuk menentukan angka final.
+
+    CATATAN PERUBAHAN: diperkecil dari 5.0 -> 2.5. Band netral selebar 5.0
+    terbukti di produksi membuat mayoritas foto asli (yang secara visual
+    warm/cool) jatuh ke "Neutral" (lalu selalu dinormalisasi ke "Cool" di
+    normalizeUndertone) -- hasil rekomendasi jadi terasa seragam untuk
+    wajah yang berbeda-beda. 2.5 tetap menyisakan margin toleransi noise
+    kamera/pencahayaan, tapi jauh lebih jarang menyerap kasus yang
+    sebenarnya condong warm/cool.
     """
     undertone_index = b_value - a_value
-    NEUTRAL_THRESHOLD = 5.0
+    NEUTRAL_THRESHOLD = 2.5
 
     if undertone_index > NEUTRAL_THRESHOLD:
         undertone = "Warm"
@@ -206,7 +214,7 @@ def classify_undertone(a_value: float, b_value: float) -> Dict[str, object]:
         "undertone_index": round(undertone_index, 2),
         "a_star": round(a_value, 2),
         "b_star": round(b_value, 2),
-        "confidence_note": "Threshold ±5.0 pada sumbu a*/b*, wajib kalibrasi ulang.",
+        "confidence_note": "Threshold ±2.5 pada sumbu a*/b*, wajib kalibrasi ulang.",
     }
 
 
@@ -222,8 +230,11 @@ def validate_human_skin_pigment(
     # 1. Cek pigmen CIELAB:
     # Kulit manusia alami (dari Very Light sampai Deep) selalu mengandung hemoglobin (a* > 0)
     # dan melanin/karotenoid (b* > 0).
-    # Alien abu-abu/pucat fiksi atau avatar berkulit dingin memiliki a* <= 1.0 atau b* <= 1.0.
-    if a_val < 1.2 or b_val < 1.2:
+    # Alien abu-abu/pucat/pale-grey fiksi memiliki a* dan b* mendekati nol (nyaris tanpa krominan).
+    # Threshold dinaikkan dari 1.2 -> 2.0 (masing-masing kanal, BUKAN hanya salah satu) karena
+    # render/foto alien pucat-keabuan terbukti masih bisa lolos di batas lama akibat noise
+    # pencahayaan/kompresi JPEG yang memberi krominan residual kecil.
+    if a_val < 2.0 or b_val < 2.0:
         raise ValueError(
             "Warna kulit tidak memiliki pigmen biologis manusia alami (terdeteksi warna abu-abu/kebiruan anomali/alien)."
         )

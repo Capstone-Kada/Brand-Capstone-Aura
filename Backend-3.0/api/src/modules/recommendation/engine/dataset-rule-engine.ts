@@ -49,6 +49,34 @@ export interface DatasetRankedMatch {
   priority: number;
 }
 
+export interface PriceRange {
+  min: number;
+  max: number;
+}
+
+/**
+ * Extracts an IDR price band from the questionnaire's free-text budget label
+ * (e.g. "< Rp 100.000", "Rp 101.000 - Rp 200.000"). Regex-based on the
+ * embedded numbers rather than matching the exact label strings, so it
+ * keeps working if the frontend copy is reworded.
+ */
+export function parseBudgetRangeIDR(budgetPref?: string): PriceRange | null {
+  if (!budgetPref) return null;
+  const numbers = budgetPref
+    .match(/\d[\d.]*\d|\d/g)
+    ?.map((n) => Number.parseInt(n.replace(/\./g, ''), 10))
+    .filter((n) => Number.isFinite(n));
+  if (!numbers || numbers.length === 0) return null;
+
+  if (numbers.length === 1) {
+    return budgetPref.trim().startsWith('>')
+      ? { min: numbers[0], max: Number.POSITIVE_INFINITY }
+      : { min: 0, max: numbers[0] };
+  }
+  const [a, b] = numbers;
+  return { min: Math.min(a, b), max: Math.max(a, b) };
+}
+
 /**
  * Ranks an affiliator's own AffiliatorListing catalog against the imported
  * RecommendationRule lookup table for a derived personalColor/undertone/

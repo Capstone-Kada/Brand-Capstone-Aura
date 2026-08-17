@@ -1,12 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { User, Bell, Key, CreditCard, ShieldCheck, Copy, RefreshCw, Check } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { Card, Button, Input, Tabs, Avatar, Badge } from '../../components/ui/UIComponents';
+import { AvatarCropModal } from './AvatarCropModal';
 import { api } from '../../services/api';
 
 interface SettingsViewProps {
   user: UserProfile;
   onUpdateProfile: (updated: Partial<UserProfile>) => void;
+  onUploadAvatar: (file: File) => void;
   onRegenerateKey: () => void;
   onCopyLink: (link: string) => void;
   onToast: (title: string, desc?: string) => void;
@@ -15,11 +17,29 @@ interface SettingsViewProps {
 export const SettingsView: React.FC<SettingsViewProps> = ({
   user,
   onUpdateProfile,
+  onUploadAvatar,
   onRegenerateKey,
   onCopyLink,
   onToast
 }) => {
   const [activeTab, setActiveTab] = useState('profile');
+
+  // Avatar upload/crop
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [pickedImageSrc, setPickedImageSrc] = useState<string | null>(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPickedImageSrc(URL.createObjectURL(file));
+    setCropModalOpen(true);
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
+  };
+
+  const handleCropped = (file: File) => {
+    onUploadAvatar(file);
+  };
 
   // Form states
   const [name, setName] = useState(user.name);
@@ -127,12 +147,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="flex items-center gap-4">
               <Avatar src={user.avatarUrl} name={user.name} size="lg" />
               <div>
-                <Button type="button" onClick={() => onToast('Avatar Updated', 'New profile picture uploaded.')} variant="outline" size="sm">
+                <Button type="button" onClick={() => avatarInputRef.current?.click()} variant="outline" size="sm">
                   Change Profile Photo
                 </Button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarFileChange}
+                  className="hidden"
+                />
                 <p className="text-[10px] text-zinc-400 mt-1">PNG, JPG up to 5MB</p>
               </div>
             </div>
+
+            {pickedImageSrc && (
+              <AvatarCropModal
+                imageSrc={pickedImageSrc}
+                isOpen={cropModalOpen}
+                onClose={() => setCropModalOpen(false)}
+                onCropped={handleCropped}
+              />
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <Input

@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { UnauthorizedError, ValidationError } from '../../../shared/errors/app-error.js';
 import { sendSuccess } from '../../../shared/utils/api-response.js';
+import type { IStorageService } from '../../../shared/services/storage.service.js';
 import type { AffiliatorService } from '../services/affiliator.service.js';
 
 export const listAffiliatorsQuerySchema = z.object({
@@ -45,7 +46,10 @@ export const updateAffiliatorStatusSchema = z.object({
 });
 
 export class AffiliatorController {
-  constructor(private readonly affiliatorService: AffiliatorService) {}
+  constructor(
+    private readonly affiliatorService: AffiliatorService,
+    private readonly storageService: IStorageService,
+  ) {}
 
   me = async (req: Request, res: Response): Promise<void> => {
     if (!req.user) throw new UnauthorizedError();
@@ -56,6 +60,16 @@ export class AffiliatorController {
   updateMe = async (req: Request, res: Response): Promise<void> => {
     if (!req.user) throw new UnauthorizedError();
     const profile = await this.affiliatorService.updateSelf(req.user.id, req.body);
+    sendSuccess(res, profile);
+  };
+
+  uploadAvatar = async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw new UnauthorizedError();
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+    if (!file) throw new ValidationError('No image file uploaded');
+
+    const uploaded = await this.storageService.uploadAvatarImage(file.buffer, file.mimetype);
+    const profile = await this.affiliatorService.updateSelf(req.user.id, { avatarUrl: uploaded.publicUrl });
     sendSuccess(res, profile);
   };
 

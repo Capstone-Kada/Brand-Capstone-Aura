@@ -466,7 +466,13 @@ export function useBeautyStore() {
     }
     setCurrentRoute(route);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+
+    // Dashboard/Analytics numbers otherwise only ever reflect the initial
+    // session-restore fetch — refresh on every visit so new scans/clicks show up.
+    if ((route === 'dashboard' || route === 'analytics') && user?.role === 'affiliator' && getAccessToken()) {
+      loadAffiliatorWorkspace().catch(() => {});
+    }
+  }, [user, loadAffiliatorWorkspace]);
 
   // Product CRUD — admin writes to the master catalog (/products), affiliators write to their own catalog (/listings).
   const addProduct = useCallback(
@@ -534,6 +540,14 @@ export function useBeautyStore() {
 
   const updateProduct = useCallback(
     async (id: string, updated: Partial<Product>) => {
+      if (id.startsWith('custom-')) {
+        const currentCustom = getStoredCustomProducts();
+        const updatedCustom = currentCustom.map((p) => (p.id === id ? { ...p, ...updated } : p));
+        saveStoredCustomProducts(updatedCustom);
+        setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
+        addToast('Product Updated', 'Changes saved successfully.', 'info');
+        return;
+      }
       if (user?.role === 'admin') {
         try {
           const product = await api.products.adminUpdate(id, {
@@ -675,6 +689,24 @@ export function useBeautyStore() {
     [addToast, user],
   );
 
+  // Avatar Upload — uploads to storage and persists avatarUrl in one request.
+  const uploadAvatar = useCallback(
+    async (file: File) => {
+      if (user?.role === 'admin') {
+        addToast('Not Available', 'Admin avatar changes are local-only in this demo.', 'info');
+        return;
+      }
+      try {
+        const profile = await api.affiliator.uploadAvatar(file);
+        setUser(mapAffiliatorToUserProfile(profile, 'affiliator'));
+        addToast('Avatar Updated', 'Your new profile photo is live.', 'success');
+      } catch (err) {
+        addToast('Upload Failed', errorMessage(err), 'error');
+      }
+    },
+    [addToast, user],
+  );
+
   // Generate new API Key
   const regenerateApiKey = useCallback(async () => {
     if (user?.role === 'admin') {
@@ -723,49 +755,26 @@ export function useBeautyStore() {
         const errMsg = axiosErr?.response?.data?.error?.message || axiosErr?.response?.data?.message || axiosErr?.message || '';
         const isFaceValidationError = status === 422 || /wajah|face|kulit|pigmen|proporsi|alien|anomali|skintone|undertone/i.test(errMsg);
 
-        // Opsi A: Penolakan ketat HANYA diterapkan jika foto diunggah dari file galeri (isUpload = true)
-        if (isUpload && isFaceValidationError) {
-          console.warn('Scan rejected: face or skin pigment validation failed for uploaded image.', errMsg);
-          setScanResult(null);
-          setScannedImage(null);
-          setAnalysisStep(0);
-          addToast(
-            'Wajah Tidak Terdeteksi',
-            errMsg || 'Foto yang Anda unggah bukan wajah manusia yang valid. Mohon unggah foto selfie yang jelas.',
-            'error'
-          );
-          return false;
-        }
-
-        console.warn('Backend AI Scan fallback / live camera flow active:', err);
-        // Untuk scan kamera langsung atau fallback dev offline: berikan hasil analisis responsif
-        setScanResult({
-          confidence: 96.8,
-          personalColor: 'Summer',
-          undertone: 'Cool',
-          skinTone: 'Medium',
-          faceShape: 'Oval',
-          matchSummary: 'Wah! Kulit Medium Cool kamu terlihat cantik alami. Berdasarkan jawaban kuesioner kamu, produk-produk ini direkomendasikan agar memberikan hasil akhir sempurna yang kamu impikan tanpa membuat kulit terasa berat.',
-          bestColorPalette: [
-            { name: 'Mauve Pink', colorHex: '#C77D9E' },
-            { name: 'Dusty Rose', colorHex: '#D4A5B8' },
-            { name: 'Soft Berry', colorHex: '#9E4B6C' },
-            { name: 'Cool Nude', colorHex: '#D8B4A6' }
-          ],
-          recommendedProducts: products.slice(0, 3).map((p, idx) => ({
-            product: p,
-            matchScore: 98 - idx * 3,
-            recommendedShade: p.shade || 'Natural Shade',
-            aiReason: `Kombinasi spektrum ${p.shade || 'Natural'} memberikan kecocokan ${98 - idx * 3}% untuk undertone Cool Medium.`
-          }))
-        });
-        setAnalysisStep(4);
-        return true;
+        // Any scan failure is a real rejection — never fabricate a fake successful
+        // result, otherwise scans that were actually rejected (or never persisted)
+        // would look "detected" to the user and dashboard counts would be wrong.
+        console.warn('Scan rejected or failed:', errMsg || err);
+        setScanResult(null);
+        setScannedImage(null);
+        setAnalysisStep(0);
+        addToast(
+          isFaceValidationError ? 'Wajah Tidak Terdeteksi' : 'Scan Gagal',
+          isFaceValidationError
+            ? (errMsg || 'Foto yang Anda unggah bukan wajah manusia yang valid. Mohon unggah foto selfie yang jelas.')
+            : 'Terjadi kesalahan saat memproses scan. Silakan coba lagi.',
+          'error'
+        );
+        return false;
       } finally {
         setIsAnalyzing(false);
       }
     },
-    [activePageSlug, addToast, products],
+    [activePageSlug, addToast],
   );
 
   const resetScan = useCallback(() => {
@@ -804,6 +813,7 @@ export function useBeautyStore() {
     updateAffiliator,
     deleteAffiliator,
     updateProfile,
+    uploadAvatar,
     regenerateApiKey,
     products,
     masterCatalog,

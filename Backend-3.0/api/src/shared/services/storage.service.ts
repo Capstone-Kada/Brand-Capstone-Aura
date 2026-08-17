@@ -15,4 +15,5 @@ export interface UploadedImage {
 
 export interface IStorageService {
   uploadScanImage(buffer: Buffer, mimetype: string): Promise<UploadedImage>;
+  uploadAvatarImage(buffer: Buffer, mimetype: string): Promise<UploadedImage>;
 }

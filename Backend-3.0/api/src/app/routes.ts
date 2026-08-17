@@ -60,7 +60,10 @@ export function createApiRouter(container: AppContainer): Router {
   );
   router.use(
     '/affiliators',
-    createAffiliatorModule({ affiliatorRepository: container.affiliatorRepository }),
+    createAffiliatorModule({
+      affiliatorRepository: container.affiliatorRepository,
+      storageService: container.storageService,
+    }),
   );
   router.use(
     '/ai-pages',

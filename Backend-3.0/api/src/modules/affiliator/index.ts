@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { authenticate } from '../../middlewares/authenticate.js';
 import { authorize } from '../../middlewares/authorize.js';
 import { validateRequest } from '../../middlewares/validate.js';
+import { handleMulterError, uploadScanImageToMemory } from '../../middlewares/index.js';
 import { asyncHandler } from '../../shared/utils/async-handler.js';
+import type { IStorageService } from '../../shared/services/storage.service.js';
 import {
   AffiliatorController,
   updateAffiliatorSchema,
@@ -13,11 +15,12 @@ import { AffiliatorService } from './services/affiliator.service.js';
 
 export interface AffiliatorModuleDeps {
   affiliatorRepository: IAffiliatorRepository;
+  storageService: IStorageService;
 }
 
 export function createAffiliatorModule(deps: AffiliatorModuleDeps): Router {
   const service = new AffiliatorService(deps.affiliatorRepository);
-  const controller = new AffiliatorController(service);
+  const controller = new AffiliatorController(service, deps.storageService);
   const router = Router();
 
   router.use(authenticate);
@@ -28,6 +31,20 @@ export function createAffiliatorModule(deps: AffiliatorModuleDeps): Router {
     authorize('AFFILIATOR'),
     validateRequest(updateAffiliatorSchema),
     asyncHandler(controller.updateMe),
+  );
+  router.post(
+    '/me/avatar',
+    authorize('AFFILIATOR'),
+    (req, res, next) => {
+      uploadScanImageToMemory(req, res, (err: unknown) => {
+        if (err) {
+          handleMulterError(err, req, res, next);
+          return;
+        }
+        next();
+      });
+    },
+    asyncHandler(controller.uploadAvatar),
   );
   router.post(
     '/me/api-key/regenerate',

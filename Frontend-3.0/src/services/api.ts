@@ -465,6 +465,11 @@ export const api = {
     me: (): Promise<AffiliatorProfileDto> => unwrap(http.get('/affiliators/me')),
     update: (data: Partial<AffiliatorProfileDto>): Promise<AffiliatorProfileDto> => unwrap(http.patch('/affiliators/me', data)),
     regenerateApiKey: (): Promise<AffiliatorProfileDto> => unwrap(http.post('/affiliators/me/api-key/regenerate')),
+    uploadAvatar: (file: File): Promise<AffiliatorProfileDto> => {
+      const form = new FormData();
+      form.append('image', file);
+      return unwrap(http.post('/affiliators/me/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } }));
+    },
     adminList: (): Promise<AffiliatorProfileDto[]> => unwrap(http.get('/affiliators')),
     adminUpdateStatus: (id: string, status: AffiliatorAccount['status']): Promise<AffiliatorProfileDto> =>
       unwrap(http.patch(`/affiliators/${id}/status`, { status })),

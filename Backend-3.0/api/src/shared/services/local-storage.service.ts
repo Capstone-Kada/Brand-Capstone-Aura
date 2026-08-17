@@ -45,4 +45,18 @@ export class LocalStorageService implements IStorageService {
 
     return { key, publicUrl: `${this.publicBaseUrl.replace(/\/$/, '')}/${key}` };
   }
+
+  async uploadAvatarImage(buffer: Buffer, mimetype: string): Promise<UploadedImage> {
+    const ext = EXT_BY_MIME[mimetype] ?? 'jpg';
+    const filename = `${randomUUID()}.${ext}`;
+    const key = `avatars/${filename}`;
+    const destDir = path.join(this.root, 'avatars');
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    await fsp.writeFile(path.join(destDir, filename), buffer);
+
+    return { key, publicUrl: `${this.publicBaseUrl.replace(/\/$/, '')}/${key}` };
+  }
 }

@@ -31,6 +31,8 @@ from .landmark_constants import (
     JAW_CONTOUR_RIGHT_HALF,
     JAW_LEFT,
     JAW_RIGHT,
+    LEFT_EYE_OUTER_CORNER,
+    RIGHT_EYE_OUTER_CORNER,
 )
 
 
@@ -50,6 +52,7 @@ class FaceMetrics:
     jaw_angle_deg: float
     jaw_curvature: float
     area_compactness: float
+    eye_span_to_cheekbone_ratio: float
 
 
 def euclidean_distance(point_a: Tuple[int, int], point_b: Tuple[int, int]) -> float:
@@ -156,6 +159,12 @@ def compute_face_metrics(landmarks_px: List[Tuple[int, int, float]]) -> FaceMetr
         oval_area / (cheekbone_width * face_length) if cheekbone_width * face_length > 0 else 0.0
     )
 
+    # eye_span_to_cheekbone_ratio: jarak antar sudut luar mata kiri-kanan,
+    # dinormalisasi lebar pipi -- dipakai validate_human_face_geometry untuk
+    # menolak proporsi mata anomali (khas ilustrasi alien/CGI).
+    eye_span = euclidean_distance(pt(LEFT_EYE_OUTER_CORNER), pt(RIGHT_EYE_OUTER_CORNER))
+    eye_span_to_cheekbone_ratio = eye_span / cheekbone_width if cheekbone_width > 0 else 0.0
+
     return FaceMetrics(
         face_length=face_length,
         cheekbone_width=cheekbone_width,
@@ -168,21 +177,37 @@ def compute_face_metrics(landmarks_px: List[Tuple[int, int, float]]) -> FaceMetr
         jaw_angle_deg=jaw_angle_deg,
         jaw_curvature=jaw_curvature,
         area_compactness=area_compactness,
+        eye_span_to_cheekbone_ratio=eye_span_to_cheekbone_ratio,
     )
 
 
 def validate_human_face_geometry(metrics: FaceMetrics) -> None:
     """
     Validasi proporsi struktur wajah manusia:
-    Menolak gambar makhluk/alien/CGI dengan rasio tengkorak yang tidak wajar (misal dahi raksasa + dagu mikroskopis).
+    Menolak gambar makhluk/alien/CGI dengan rasio tengkorak yang tidak wajar (misal dahi raksasa + dagu mikroskopis,
+    atau mata yang terlalu lebar/sempit dibanding lebar wajah).
+
+    CATATAN KALIBRASI: batas-batas di bawah dipersempit dari rentang awal
+    (forehead/jaw 0.35-3.0, length/cheekbone 0.5-2.8) yang terbukti terlalu
+    longgar -- render/foto alien humanoid dengan proporsi tengkorak yang
+    masih "cukup manusiawi" secara geometris tetap lolos. Rentang baru
+    mengikuti variasi wajah dewasa nyata (lihat dataset kalibrasi di
+    classify_face_shape) plus margin toleransi, BUKAN batas teoritis penuh.
     """
-    if metrics.forehead_to_jaw_ratio > 3.0 or metrics.forehead_to_jaw_ratio < 0.35:
+    if metrics.forehead_to_jaw_ratio > 1.8 or metrics.forehead_to_jaw_ratio < 0.55:
         raise ValueError(
             "Proporsi wajah di luar batas manusia normal (rasio dahi terhadap rahang anomali/alien)."
         )
-    if metrics.length_to_cheekbone_ratio > 2.8 or metrics.length_to_cheekbone_ratio < 0.5:
+    if metrics.length_to_cheekbone_ratio > 1.9 or metrics.length_to_cheekbone_ratio < 0.85:
         raise ValueError(
             "Proporsi wajah di luar batas manusia normal (rasio panjang terhadap lebar wajah anomali)."
+        )
+    # Jarak antar sudut luar mata relatif terhadap lebar pipi: mata manusia normal
+    # berjarak ~0.75-1.05x lebar pipi. Alien fiksi umum digambar dengan mata
+    # jauh lebih lebar-set (mendekati/melebihi lebar wajah) atau lebih sempit.
+    if metrics.eye_span_to_cheekbone_ratio > 1.05 or metrics.eye_span_to_cheekbone_ratio < 0.55:
+        raise ValueError(
+            "Proporsi wajah di luar batas manusia normal (jarak/ukuran mata anomali/alien)."
         )
 
 

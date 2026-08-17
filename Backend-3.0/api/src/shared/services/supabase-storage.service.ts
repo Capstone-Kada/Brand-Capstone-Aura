@@ -55,4 +55,25 @@ export class SupabaseStorageService implements IStorageService {
 
     return { key, publicUrl: data.publicUrl };
   }
+
+  async uploadAvatarImage(buffer: Buffer, mimetype: string): Promise<UploadedImage> {
+    const ext = EXT_BY_MIME[mimetype] ?? 'jpg';
+    const key = `avatars/${randomUUID()}.${ext}`;
+
+    const { error } = await this.client.storage.from(this.bucket).upload(key, buffer, {
+      contentType: mimetype,
+      upsert: false,
+    });
+
+    if (error) {
+      throw new AppError(`Failed to upload avatar image: ${error.message}`, {
+        code: ERROR_CODES.INTERNAL_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      });
+    }
+
+    const { data } = this.client.storage.from(this.bucket).getPublicUrl(key);
+
+    return { key, publicUrl: data.publicUrl };
+  }
 }
