@@ -81,7 +81,7 @@ export class LeadService {
         data: {
           affiliatorId: affiliator.id,
           slug: affiliator.handle,
-          title: `${affiliator.name || affiliator.handle}'s Beauty AI`,
+          title: `${affiliator.handle}'s Beauty AI`,
           bio: affiliator.niche ? `Find your perfect makeup matches for ${affiliator.niche}` : 'Find your perfect shade with my AI skin analyst!',
           primaryColor: '#F26CA7',
           accentColor: '#18181B',
