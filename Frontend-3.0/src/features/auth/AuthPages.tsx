@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, ArrowRight, Lock, Mail, User, ShieldCheck, CheckCircle2, MailCheck } from 'lucide-react';
+import { Sparkles, ArrowRight, Lock, Mail, User, ShieldCheck, CheckCircle2, MailCheck, Eye, EyeOff } from 'lucide-react';
 import { RouteView } from '../../types';
 import { Button, Input, Card, Badge } from '../../components/ui/UIComponents';
 
@@ -56,6 +56,7 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
   const [verificationSentEmail, setVerificationSentEmail] = useState('');
   const [isResending, setIsResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Whenever the "check your email" screen becomes active, pick up any cooldown
   // already in flight for this address (e.g. from before a page refresh) and
@@ -349,7 +350,7 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
                     <div className="space-y-2">
                       <Input
                         label="Password"
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         placeholder="••••••••••••"
                         value={password}
                         onChange={(e) => { setPassword(e.target.value); setAuthError(''); }}
@@ -357,6 +358,15 @@ export const AuthPages: React.FC<AuthPagesProps> = ({ initialView, onNavigate, o
                         error={authError}
                         required
                         className={authMode === 'register' && password && !isPasswordValid ? 'border-red-300 focus:ring-red-200' : ''}
+                        rightElement={
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="text-zinc-400 hover:text-zinc-600 focus:outline-none p-1 transition-colors"
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        }
                       />
                       {authMode === 'register' && password && (
                         <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1">
