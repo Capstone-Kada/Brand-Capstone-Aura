@@ -67,13 +67,6 @@ const envSchema = z.object({
       'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set together (or both left empty to use local disk storage)',
     path: ['SUPABASE_SERVICE_ROLE_KEY'],
   },
-).refine(
-  (env) => Boolean(env.EMAIL_FUNCTION_URL) === Boolean(env.EMAIL_FUNCTION_SECRET),
-  {
-    message:
-      'EMAIL_FUNCTION_URL and EMAIL_FUNCTION_SECRET must be set together (or both left empty to log verification links instead of emailing them)',
-    path: ['EMAIL_FUNCTION_SECRET'],
-  },
 );
 
 export type EnvConfig = z.infer<typeof envSchema>;
