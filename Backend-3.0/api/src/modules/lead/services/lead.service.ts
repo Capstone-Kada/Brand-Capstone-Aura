@@ -70,7 +70,7 @@ export class LeadService {
 
   async submitPublicScan(input: SubmitLeadInput): Promise<LeadScanResultDto> {
     const page = await this.db.aIPage.findUnique({ where: { slug: input.slug } });
-    if (!page || page.status !== 'PUBLISHED') {
+    if (!page) {
       throw new NotFoundError('Page not found');
     }
 
