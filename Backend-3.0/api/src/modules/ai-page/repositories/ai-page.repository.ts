@@ -134,7 +134,7 @@ export class AIPageRepository implements IAIPageRepository {
     // Lazy-create default AI Page if missing but the affiliator is active
     if (!row) {
       const affiliator = await this.db.affiliatorProfile.findFirst({
-        where: { handle: slug, status: 'ACTIVE' },
+        where: { handle: slug, status: 'APPROVED' },
       });
       if (affiliator) {
         row = await this.db.aIPage.create({
