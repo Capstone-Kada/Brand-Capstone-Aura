@@ -6,7 +6,7 @@ import type { IStorageService } from '../shared/services/storage.service.js';
 import { SupabaseStorageService } from '../shared/services/supabase-storage.service.js';
 import { LocalStorageService } from '../shared/services/local-storage.service.js';
 import type { IEmailService } from '../shared/services/email.service.js';
-import { SupabaseEdgeEmailService, ConsoleEmailService } from '../shared/services/email.service.js';
+import { ResendEmailService, ConsoleEmailService } from '../shared/services/email.service.js';
 import { AuthRepository } from '../modules/auth/repositories/auth.repository.js';
 import { UserRepository } from '../modules/user/repositories/user.repository.js';
 import { ProfileRepository } from '../modules/profile/repositories/profile.repository.js';
@@ -64,15 +64,16 @@ function createStorageService(): IStorageService {
 }
 
 /**
- * Picks the Supabase Edge Function email sender when configured, otherwise
+ * Picks the Resend API email sender when configured, otherwise
  * falls back to logging the verification link (dev/CI). See
  * shared/services/email.service.ts.
  */
 function createEmailService(): IEmailService {
   if (appConfig.email.isConfigured) {
-    return new SupabaseEdgeEmailService(
-      appConfig.email.functionUrl as string,
+    // Reusing the existing functionSecret config as the Resend API Key to avoid changing environment variables
+    return new ResendEmailService(
       appConfig.email.functionSecret as string,
+      appConfig.email.fromAddress as string,
     );
   }
   return new ConsoleEmailService();

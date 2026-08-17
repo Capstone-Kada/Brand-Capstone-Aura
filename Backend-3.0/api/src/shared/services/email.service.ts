@@ -9,28 +9,22 @@ export interface IEmailService {
   sendVerificationEmail(to: string, verifyUrl: string): Promise<void>;
 }
 
-/**
- * Calls a Supabase Edge Function (see supabase/functions/send-email) that
- * sends the actual email via Resend. Supabase has no generic "send email"
- * REST API of its own outside Supabase Auth's built-in flows, so the Edge
- * Function is the integration point — it's the compute layer, Resend is the
- * delivery provider behind it.
- */
-export class SupabaseEdgeEmailService implements IEmailService {
+export class ResendEmailService implements IEmailService {
   constructor(
-    private readonly functionUrl: string,
-    private readonly functionSecret: string,
+    private readonly apiKey: string,
+    private readonly fromAddress: string,
   ) {}
 
   async sendVerificationEmail(to: string, verifyUrl: string): Promise<void> {
-    const response = await fetch(this.functionUrl, {
+    const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-email-secret': this.functionSecret,
+        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
-        to,
+        from: this.fromAddress,
+        to: [to],
         subject: 'Verify your Aura account',
         html: buildVerificationEmailHtml(verifyUrl),
       }),
@@ -38,8 +32,8 @@ export class SupabaseEdgeEmailService implements IEmailService {
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      logger.error('Verification email send failed', { to, status: response.status, body });
-      throw new Error(`Email function responded with ${response.status}`);
+      logger.error('Verification email send failed via Resend', { to, status: response.status, body });
+      throw new Error(`Resend API responded with ${response.status}`);
     }
   }
 }

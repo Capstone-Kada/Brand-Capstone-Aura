@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import path from 'node:path';
@@ -52,7 +52,7 @@ function imageFileFilter(
   cb(null, true);
 }
 
-export const uploadScanImage = multer({
+export const uploadScanImage: RequestHandler = multer({
   storage,
   limits: { fileSize: appConfig.upload.maxBytes, files: 1 },
   fileFilter: imageFileFilter,
@@ -66,7 +66,7 @@ export const uploadScanImage = multer({
  * writes straight to local disk) so the legacy authenticated `/scan` route
  * — untouched by this refactor — keeps working exactly as before.
  */
-export const uploadScanImageToMemory = multer({
+export const uploadScanImageToMemory: RequestHandler = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: appConfig.upload.maxBytes, files: 1 },
   fileFilter: imageFileFilter,

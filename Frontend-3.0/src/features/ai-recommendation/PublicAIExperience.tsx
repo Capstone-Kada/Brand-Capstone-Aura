@@ -38,8 +38,7 @@ import {
   LockClosedIcon as LockClosedIconSolid
 } from '@heroicons/react/24/solid';
 import { RouteView, Product, AIAnalysisResult, UserProfile } from '../../types';
-import { Button, Card, Badge, Progress } from '../../components/ui/UIComponents';
-import { Modal } from '../../components/ui/Modal';
+import { Button, Card, Badge, Progress, Modal } from '../../components/ui/UIComponents';
 import { PremiumLoader } from '../../components/ui/PremiumLoader';
 import { api, mapListingToProduct, type PublicAIPageDto } from '../../services/api';
 import confetti from 'canvas-confetti';

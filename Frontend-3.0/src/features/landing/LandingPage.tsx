@@ -1353,9 +1353,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 <p className="text-xs text-zinc-500 mt-1 group-hover:text-zinc-400 transition-colors duration-300">For emerging beauty creators starting affiliate monetization.</p>
                 <div className="my-6">
                   <span className="text-4xl font-black text-zinc-900 group-hover:text-white transition-colors duration-300">
-                    {billingCycle === 'monthly' ? '$29' : '$23'}
+                    Rp 0
                   </span>
-                  <span className="text-xs text-zinc-500 group-hover:text-zinc-400 transition-colors duration-300"> / month</span>
+                  <span className="text-xs text-zinc-500 group-hover:text-zinc-400 transition-colors duration-300"> / Free Forever</span>
                 </div>
                 <ul className="space-y-3 text-xs text-zinc-600 group-hover:text-zinc-300 transition-colors duration-300">
                   <li className="flex items-center gap-2">
@@ -1364,11 +1364,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:text-[#F26CA7] shrink-0 transition-colors duration-300" />
-                    <span>25 Affiliate Products</span>
+                    <span>Standard Product Catalog</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:text-[#F26CA7] shrink-0 transition-colors duration-300" />
-                    <span>Standard Theme Customizer</span>
+                    <span>Affiliate Link & Bio Page</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:text-[#F26CA7] shrink-0 transition-colors duration-300" />
+                    <span>Basic Performance Analytics</span>
                   </li>
                 </ul>
               </div>
@@ -1393,7 +1397,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 <p className="text-xs text-zinc-500 mt-1 group-hover:text-zinc-300 transition-colors duration-300">For active beauty creators on TikTok & Instagram.</p>
                 <div className="my-6">
                   <span className="text-4xl font-black text-zinc-900 group-hover:text-white transition-colors duration-300">
-                    {billingCycle === 'monthly' ? '$79' : '$63'}
+                    {billingCycle === 'monthly' ? 'Rp 99.000' : 'Rp 79.000'}
                   </span>
                   <span className="text-xs text-zinc-500 group-hover:text-zinc-400 transition-colors duration-300"> / month</span>
                 </div>
@@ -1404,15 +1408,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   </li>
                   <li className="flex items-center gap-2 font-medium">
                     <CheckCircle2 className="w-4 h-4 text-[#F26CA7] shrink-0" />
-                    <span>100 Affiliate Products</span>
-                  </li>
-                  <li className="flex items-center gap-2 font-medium">
-                    <CheckCircle2 className="w-4 h-4 text-[#F26CA7] shrink-0" />
                     <span>Full Custom Brand Theme & Colors</span>
                   </li>
                   <li className="flex items-center gap-2 font-medium">
                     <CheckCircle2 className="w-4 h-4 text-[#F26CA7] shrink-0" />
-                    <span>Audience Undertone Analytics</span>
+                    <span>Audience Undertone Analytics & Leads</span>
+                  </li>
+                  <li className="flex items-center gap-2 font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-[#F26CA7] shrink-0" />
+                    <span>Priority AI Shade Recommendation</span>
                   </li>
                 </ul>
               </div>
@@ -1430,17 +1434,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             <div className="relative z-10 space-y-6 flex-1 flex flex-col justify-between">
               <div>
                 <h3 className="text-xl font-semibold text-zinc-900 group-hover:text-white transition-colors duration-300">Agency / Elite</h3>
-                <p className="text-xs text-zinc-500 mt-1 group-hover:text-zinc-400 transition-colors duration-300">For top-tier talent management & high volume creators.</p>
+                <p className="text-xs text-zinc-500 mt-1 group-hover:text-zinc-400 transition-colors duration-300">For top-tier talent management, brands & high volume creators.</p>
                 <div className="my-6">
                   <span className="text-4xl font-black text-zinc-900 group-hover:text-white transition-colors duration-300">
-                    {billingCycle === 'monthly' ? '$199' : '$159'}
+                    {billingCycle === 'monthly' ? 'Rp 299.000' : 'Rp 239.000'}
                   </span>
                   <span className="text-xs text-zinc-500 group-hover:text-zinc-400 transition-colors duration-300"> / month</span>
                 </div>
                 <ul className="space-y-3 text-xs text-zinc-600 group-hover:text-zinc-300 transition-colors duration-300">
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:text-[#F26CA7] shrink-0 transition-colors duration-300" />
-                    <span>Unlimited AI Scans</span>
+                    <span>50,000 AI Selfie Scans / mo</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:text-[#F26CA7] shrink-0 transition-colors duration-300" />
@@ -1448,11 +1452,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:text-[#F26CA7] shrink-0 transition-colors duration-300" />
-                    <span>API Key & Webhook Access</span>
+                    <span>Verified Creator Badge</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 group-hover:text-[#F26CA7] shrink-0 transition-colors duration-300" />
-                    <span>1-on-1 Conversion VIP Support</span>
+                    <span>Dedicated Priority AI Engine & VIP Support</span>
                   </li>
                 </ul>
               </div>

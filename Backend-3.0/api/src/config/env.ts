@@ -30,6 +30,7 @@ const envSchema = z.object({
   // emailing it (dev/CI only).
   EMAIL_FUNCTION_URL: z.string().url().optional(),
   EMAIL_FUNCTION_SECRET: z.string().min(1).optional(),
+  EMAIL_FROM: z.string().default('Aura <onboarding@resend.dev>'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
@@ -66,13 +67,6 @@ const envSchema = z.object({
     message:
       'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set together (or both left empty to use local disk storage)',
     path: ['SUPABASE_SERVICE_ROLE_KEY'],
-  },
-).refine(
-  (env) => Boolean(env.EMAIL_FUNCTION_URL) === Boolean(env.EMAIL_FUNCTION_SECRET),
-  {
-    message:
-      'EMAIL_FUNCTION_URL and EMAIL_FUNCTION_SECRET must be set together (or both left empty to log verification links instead of emailing them)',
-    path: ['EMAIL_FUNCTION_SECRET'],
   },
 );
 
