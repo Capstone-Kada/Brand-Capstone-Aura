@@ -10,7 +10,7 @@ import type {
   UserProfile,
 } from '../types';
 
-const API_URL = (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_URL || '/api';
+const API_URL = '/api';
 
 const TOKEN_KEY = 'aura_access_token';
 const REFRESH_TOKEN_KEY = 'aura_refresh_token';
