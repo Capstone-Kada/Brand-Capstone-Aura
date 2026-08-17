@@ -139,10 +139,33 @@ export class AuthRepository implements IAuthRepository {
   }
 
   async markEmailVerificationUsed(id: string): Promise<void> {
-    await this.db.emailVerificationToken.update({
+    return this.db.emailVerificationToken.update({
       where: { id },
       data: { usedAt: new Date() },
+    }).then(() => {});
+  }
+
+  async autoCreateAIPage(userId: string): Promise<void> {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      include: { affiliatorProfile: { include: { pages: true } } },
     });
+    
+    if (user?.affiliatorProfile && user.affiliatorProfile.pages.length === 0) {
+      const affiliator = user.affiliatorProfile;
+      await this.db.aIPage.create({
+        data: {
+          affiliatorId: affiliator.id,
+          slug: affiliator.handle,
+          title: `${affiliator.handle}'s Beauty AI`,
+          bio: 'Find your perfect shade with my AI skin analyst!',
+          primaryColor: '#F26CA7',
+          accentColor: '#18181B',
+          status: 'PUBLISHED',
+          allowCameraUpload: true,
+        },
+      });
+    }
   }
 
   findLatestEmailVerificationForUser(userId: string): Promise<EmailVerificationToken | null> {

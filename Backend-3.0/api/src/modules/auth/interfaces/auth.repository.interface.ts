@@ -39,5 +39,6 @@ export interface IAuthRepository {
     tokenHash: string,
   ): Promise<(EmailVerificationToken & { user: User }) | null>;
   markEmailVerificationUsed(id: string): Promise<void>;
+  autoCreateAIPage(userId: string): Promise<void>;
   findLatestEmailVerificationForUser(userId: string): Promise<EmailVerificationToken | null>;
 }

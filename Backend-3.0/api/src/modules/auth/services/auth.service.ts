@@ -286,6 +286,9 @@ export class AuthService {
       emailVerifiedAt: new Date(),
     });
     await this.authRepository.markEmailVerificationUsed(stored.id);
+    await this.authRepository.autoCreateAIPage(stored.userId).catch((err) => {
+      logger.error('Failed to auto-create AI Page on email verification', { error: err });
+    });
     logger.info('Email verified', { userId: stored.userId });
   }
 
