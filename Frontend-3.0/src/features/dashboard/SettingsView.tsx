@@ -8,7 +8,7 @@ import { api } from '../../services/api';
 interface SettingsViewProps {
   user: UserProfile;
   onUpdateProfile: (updated: Partial<UserProfile>) => void;
-  onUploadAvatar: (file: File) => void;
+  onUploadAvatar: (file: File) => Promise<void>;
   onRegenerateKey: () => void;
   onCopyLink: (link: string) => void;
   onToast: (title: string, desc?: string) => void;
@@ -24,10 +24,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState('profile');
 
-  // Avatar upload/crop
+  // Avatar upload/crop — staged locally (preview only) until "Save Profile
+  // Changes" is clicked, consistent with every other field in this form.
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [pickedImageSrc, setPickedImageSrc] = useState<string | null>(null);
   const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const [pendingAvatarPreviewUrl, setPendingAvatarPreviewUrl] = useState<string | null>(null);
 
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -38,7 +41,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleCropped = (file: File) => {
-    onUploadAvatar(file);
+    if (pendingAvatarPreviewUrl) URL.revokeObjectURL(pendingAvatarPreviewUrl);
+    setPendingAvatarFile(file);
+    setPendingAvatarPreviewUrl(URL.createObjectURL(file));
   };
 
   // Form states
@@ -107,14 +112,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateProfile({
-      name,
-      handle,
-      bio,
-      socialPlatforms: { tiktok, instagram, youtube }
-    });
+    setIsSavingProfile(true);
+    try {
+      if (pendingAvatarFile) {
+        await onUploadAvatar(pendingAvatarFile);
+        if (pendingAvatarPreviewUrl) URL.revokeObjectURL(pendingAvatarPreviewUrl);
+        setPendingAvatarFile(null);
+        setPendingAvatarPreviewUrl(null);
+      }
+      onUpdateProfile({
+        name,
+        handle,
+        bio,
+        socialPlatforms: { tiktok, instagram, youtube }
+      });
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   return (
@@ -145,7 +163,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <h3 className="text-base font-bold text-zinc-900 border-b border-zinc-100 pb-3">Creator Profile Info</h3>
 
             <div className="flex items-center gap-4">
-              <Avatar src={user.avatarUrl} name={user.name} size="lg" />
+              <Avatar src={pendingAvatarPreviewUrl || user.avatarUrl} name={user.name} size="lg" />
               <div>
                 <Button type="button" onClick={() => avatarInputRef.current?.click()} variant="outline" size="sm">
                   Change Profile Photo
@@ -157,7 +175,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onChange={handleAvatarFileChange}
                   className="hidden"
                 />
-                <p className="text-[10px] text-zinc-400 mt-1">PNG, JPG up to 5MB</p>
+                <p className="text-[10px] text-zinc-400 mt-1">
+                  {pendingAvatarPreviewUrl ? 'New photo selected — click Save Profile Changes to apply.' : 'PNG, JPG up to 5MB'}
+                </p>
               </div>
             </div>
 
@@ -211,8 +231,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               />
             </div>
 
-            <Button type="submit" variant="primary">
-              Save Profile Changes
+            <Button type="submit" variant="primary" disabled={isSavingProfile}>
+              {isSavingProfile ? 'Saving...' : 'Save Profile Changes'}
             </Button>
           </Card>
         </form>
