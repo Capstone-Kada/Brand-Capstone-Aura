@@ -174,11 +174,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         followersCount: editAffFollowers,
         totalScansGenerated: parseInt(editAffScans) || 0,
         totalClicksGenerated: parseInt(editAffClicks) || 0,
-        status: editAffStatus,
       });
-    } else {
+    }
+    
+    if (onUpdateAffiliatorStatus && editAffStatus !== editingAffiliator.status) {
       onUpdateAffiliatorStatus(editingAffiliator.id, editAffStatus);
     }
+
     setEditingAffiliator(null);
   };
 
