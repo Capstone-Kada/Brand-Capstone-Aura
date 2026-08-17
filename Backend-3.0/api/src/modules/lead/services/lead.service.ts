@@ -71,9 +71,26 @@ export class LeadService {
   ) {}
 
   async submitPublicScan(input: SubmitLeadInput): Promise<LeadScanResultDto> {
-    const page = await this.db.aIPage.findUnique({ where: { slug: input.slug } });
-    if (!page || page.status !== 'PUBLISHED') {
-      throw new NotFoundError('Page not found');
+    let page = await this.db.aIPage.findUnique({ where: { slug: input.slug } });
+    if (!page) {
+      const affiliator = await this.db.affiliatorProfile.findFirst({
+        where: { handle: input.slug, status: 'APPROVED' },
+      });
+      if (!affiliator) {
+        throw new NotFoundError('Page not found');
+      }
+      page = await this.db.aIPage.create({
+        data: {
+          affiliatorId: affiliator.id,
+          slug: affiliator.handle,
+          title: `${affiliator.handle}'s Beauty AI`,
+          bio: affiliator.niche ? `Find your perfect makeup matches for ${affiliator.niche}` : 'Find your perfect shade with my AI skin analyst!',
+          primaryColor: '#F26CA7',
+          accentColor: '#18181B',
+          status: 'PUBLISHED',
+          allowCameraUpload: true,
+        },
+      });
     }
 
     // Persist the selfie and run inference in parallel — independent I/O,
