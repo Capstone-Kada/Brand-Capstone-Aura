@@ -11,7 +11,8 @@ import { logger } from '../shared/utils/logger.js';
 
 export const apiRateLimiter = rateLimit({
   windowMs: appConfig.rateLimit.windowMs,
-  max: appConfig.rateLimit.max,
+  max: appConfig.isProduction ? appConfig.rateLimit.max : 50000,
+  skip: () => !appConfig.isProduction,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

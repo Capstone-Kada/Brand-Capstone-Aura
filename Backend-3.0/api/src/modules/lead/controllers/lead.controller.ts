@@ -43,4 +43,16 @@ export class LeadController {
     await this.leadService.recordClick(leadId, listingId);
     sendSuccess(res, { message: 'Click recorded' });
   };
+
+  updateProfile = async (req: Request, res: Response): Promise<void> => {
+    const leadId = String(req.params.id || req.body.leadId || '');
+    if (!leadId) throw new ValidationError('leadId is required');
+    const updated = await this.leadService.updateLeadProfile(leadId, {
+      followerName: req.body.followerName,
+      followerHandle: req.body.followerHandle,
+      email: req.body.email,
+      age: req.body.age,
+    });
+    sendSuccess(res, updated);
+  };
 }

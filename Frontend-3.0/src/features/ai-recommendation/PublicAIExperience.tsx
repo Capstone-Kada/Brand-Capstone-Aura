@@ -52,7 +52,8 @@ interface PublicAIExperienceProps {
   analysisStep: number;
   scanResult: AIAnalysisResult | null;
   isPublicView?: boolean;
-  onStartScan: (img: string, skinPref?: string, finishPref?: string, budgetPref?: string, isUpload?: boolean) => Promise<boolean> | void;
+  onStartScan: (img: string, skinPref?: string, finishPref?: string, budgetPref?: string, isUpload?: boolean, currentSlug?: string) => Promise<boolean> | void;
+  onFinalizeLead?: (data: { followerName: string; age?: number | string; followerHandle?: string; email?: string; leadId?: string }) => void;
   onResetScan: () => void;
   onNavigate: (route: RouteView) => void;
   onToast: (title: string, desc?: string, type?: 'success' | 'error' | 'info') => void;
@@ -112,7 +113,8 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   onResetScan,
   onNavigate,
   onToast,
-  onRecordClick
+  onRecordClick,
+  onFinalizeLead,
 }) => {
   // Public/anonymous visitors have no logged-in `user`/`products` in the store — resolve the
   // page owner's branding + featured catalog independently from the URL slug instead.
@@ -343,7 +345,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     }
   };
 
-  // Trigger Scanning Process Animation
+  // Trigger Scanning Process Animation (Configured to 8 seconds)
   const initiateScanProcess = async (imgUrl: string, isUpload: boolean = false) => {
     setCapturedImage(imgUrl);
     setCurrentStep('scanning');
@@ -359,33 +361,38 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
 
-    // Smoothly progress up to 90% while AI analysis is actively running
-    scanIntervalRef.current = setInterval(() => {
-      setScanProgress((prev) => {
-        if (prev >= 90) {
-          return 90; // Wait at 90% until AI call resolves
-        }
-        const next = prev + 3;
-        if (next >= 25 && next < 50) {
-          setScanStatusText('Analyzing pigmentation levels & moisture...');
-        } else if (next >= 50 && next < 75) {
-          setScanStatusText('Analyzing undertone spectrum & skin tone...');
-        } else if (next >= 75) {
-          setScanStatusText('Mengomparasi spektrum warna dengan database AI...');
-        }
-        return next;
-      });
-    }, 35);
+    const startTime = Date.now();
+    const targetScanDuration = 7600; // ~7.6 seconds to reach 95% smoothly
 
-    // Run real AI analysis in backend. The analysis screen should read as a
-    // deliberate ~8s process regardless of how fast the API actually responds.
-    const MIN_SCAN_DURATION_MS = 8000;
+    // Smoothly progress up to 95% over ~7.6 seconds while AI analysis runs
+    scanIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progressRatio = Math.min(elapsed / targetScanDuration, 1);
+      const calculatedProgress = Math.min(95, Math.round(progressRatio * 95));
+
+      setScanProgress(calculatedProgress);
+
+      if (calculatedProgress < 20) {
+        setScanStatusText('Detecting contour patterns & facial features...');
+      } else if (calculatedProgress >= 20 && calculatedProgress < 45) {
+        setScanStatusText('Analyzing pigmentation levels & moisture...');
+      } else if (calculatedProgress >= 45 && calculatedProgress < 70) {
+        setScanStatusText('Analyzing undertone spectrum & skin tone...');
+      } else if (calculatedProgress >= 70 && calculatedProgress < 90) {
+        setScanStatusText('Mengomparasi spektrum warna dengan database AI...');
+      } else {
+        setScanStatusText('Curating personalized recommendations...');
+      }
+    }, 50);
+
+    // Run real AI analysis in backend and ensure minimum 8-second animation experience
     try {
-      const minDuration = new Promise<void>((resolve) => setTimeout(resolve, MIN_SCAN_DURATION_MS));
+      const minTimerPromise = new Promise((resolve) => setTimeout(resolve, 8000));
       const scanPromise = onStartScan(imgUrl, undefined, undefined, undefined, isUpload);
+      
       const [success] = await Promise.all([
         scanPromise instanceof Promise ? scanPromise : Promise.resolve(true),
-        minDuration,
+        minTimerPromise,
       ]);
 
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
@@ -403,7 +410,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
       setScanStatusText('AI Scan Complete!');
       setTimeout(() => {
         setCurrentStep('select-area');
-      }, 350);
+      }, 400);
     } catch {
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
       setCapturedImage(null);
@@ -420,6 +427,14 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     if (!customerName.trim()) {
       onToast('Masukkan Nama', 'Silakan isi nama Anda terlebih dahulu.', 'error');
       return;
+    }
+
+    if (onFinalizeLead) {
+      onFinalizeLead({
+        followerName: customerName.trim(),
+        age: agePref ? Number(agePref) : undefined,
+        leadId: scanResult?.leadId,
+      });
     }
     
     setCurrentStep('result');
@@ -699,7 +714,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
               <span style={{ color: '#545459' }}>Find Your Perfect</span>
               <br />
               <span style={{ color: '#545459' }}>Beauty </span>
-              <span style={{ color: '#F6559C' }}>Match</span>
+              <span style={{ color: publicPageData?.primaryColor || '#F6559C' }}>Match</span>
             </h1>
           </div>
 
@@ -775,7 +790,10 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     variant="primary"
                     onClick={() => setCurrentStep('camera-guide')}
                     className="rounded-full shadow-xl hover:shadow-2xl hover:scale-108 active:scale-95 transition-all duration-300 font-medium tracking-wide cursor-pointer text-xs sm:text-sm whitespace-nowrap"
-                    style={{ padding: '10px 30px' }}
+                    style={{ 
+                      padding: '10px 30px',
+                      backgroundColor: publicPageData?.primaryColor || undefined
+                    }}
                   >
                     <span>Start Ai Scan</span>
                   </Button>
@@ -1324,8 +1342,8 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 max-w-2xl mx-auto">
                         {[
-                          { key: 'bibir', title: 'Lips Focus', subtitle: 'Natural lip tone & lipstick shade match', icon: '/image/Lipstick.png' },
-                          { key: 'shade', title: 'Base / Skin', subtitle: 'Skin Tone & Undertone match for Cushion', icon: '/image/Makeup.png' },
+                          { key: 'bibir' as AnalysisArea, title: 'Lips Focus', subtitle: 'Natural lip tone & lipstick shade match', icon: '/image/Lipstick.png' },
+                          { key: 'shade' as AnalysisArea, title: 'Base / Skin', subtitle: 'Skin Tone & Undertone match for Cushion', icon: '/image/Makeup.png' },
                         ].map((item) => {
                           const isSelected = selectedArea === item.key;
                           return (

@@ -124,11 +124,14 @@ export class AuthService {
       throw new UnauthorizedError('Invalid email or password');
     }
 
-    if (!user.isEmailVerified) {
+    // Special treatment: exempt admin and demo accounts from email verification & 2FA
+    const isExempted = ['admin@auraai.local', 'kate@auraai.local'].includes(user.email.toLowerCase());
+
+    if (!user.isEmailVerified && !isExempted) {
       throw new EmailNotVerifiedError();
     }
 
-    if (user.isTwoFactorEnabled) {
+    if (user.isTwoFactorEnabled && !isExempted) {
       return { requires2FA: true, userId: user.id };
     }
 

@@ -226,6 +226,7 @@ interface CustomerLeadDto {
   followerName: string | null;
   followerHandle: string | null;
   email: string | null;
+  age?: number | string | null;
   selfieUrl: string | null;
   detectedSkinTone: string;
   detectedUndertone: string;
@@ -241,6 +242,7 @@ interface CustomerLeadDto {
 }
 
 interface LeadScanResultDto {
+  leadId?: string;
   confidence: number;
   personalColor: string;
   undertone: string;
@@ -381,6 +383,7 @@ export function mapCustomerLeadDto(l: CustomerLeadDto): CustomerLead {
     followerName: l.followerName ?? undefined,
     followerHandle: l.followerHandle ?? undefined,
     email: l.email ?? undefined,
+    age: l.age ?? undefined,
     selfieUrl: l.selfieUrl ?? undefined,
     detectedSkinTone: l.detectedSkinTone as CustomerLead['detectedSkinTone'],
     detectedUndertone: l.detectedUndertone as CustomerLead['detectedUndertone'],
@@ -399,6 +402,7 @@ export function mapCustomerLeadDto(l: CustomerLeadDto): CustomerLead {
 
 function mapScanResultDto(r: LeadScanResultDto): AIAnalysisResult {
   return {
+    leadId: r.leadId,
     confidence: r.confidence,
     personalColor: r.personalColor as AIAnalysisResult['personalColor'],
     undertone: r.undertone as AIAnalysisResult['undertone'],
@@ -507,6 +511,8 @@ export const api = {
     list: (): Promise<CustomerLeadDto[]> => unwrap(http.get('/leads')),
     submit: (form: FormData): Promise<LeadScanResultDto> =>
       unwrap(http.post('/leads', form, { headers: { 'Content-Type': 'multipart/form-data' } })),
+    updateProfile: (leadId: string, data: { followerName?: string; followerHandle?: string; email?: string; age?: number | string }): Promise<CustomerLeadDto> =>
+      unwrap(http.patch(`/leads/${leadId}`, data)),
     recordClick: (listingId: string, leadId?: string): Promise<void> =>
       unwrap(http.post('/leads/clicks', { listingId, leadId })),
   },

@@ -314,6 +314,7 @@ export class LeadService {
       followerName: row.followerName,
       followerHandle: row.followerHandle,
       email: row.email,
+      age: row.location && !isNaN(Number(row.location)) ? Number(row.location) : null,
       selfieUrl: row.selfieUrl,
       detectedSkinTone: row.scan.skinTone,
       detectedUndertone: row.scan.undertone,
@@ -328,6 +329,44 @@ export class LeadService {
       estimatedCommission: row.estimatedCommission,
       location: row.location,
     }));
+  }
+
+  async updateLeadProfile(
+    leadId: string,
+    data: { followerName?: string; followerHandle?: string; email?: string; age?: number | string },
+  ): Promise<CustomerLeadDto> {
+    const row = await this.db.customerLead.update({
+      where: { id: leadId },
+      data: {
+        ...(data.followerName !== undefined ? { followerName: data.followerName } : {}),
+        ...(data.followerHandle !== undefined ? { followerHandle: data.followerHandle } : {}),
+        ...(data.email !== undefined ? { email: data.email } : {}),
+        ...(data.age !== undefined ? { location: String(data.age) } : {}),
+      },
+      include: { scan: true },
+    });
+
+    return {
+      id: row.id,
+      scanDate: row.createdAt.toISOString(),
+      followerName: row.followerName,
+      followerHandle: row.followerHandle,
+      email: row.email,
+      age: row.location && !isNaN(Number(row.location)) ? Number(row.location) : null,
+      selfieUrl: row.selfieUrl,
+      detectedSkinTone: row.scan.skinTone,
+      detectedUndertone: row.scan.undertone,
+      personalColor: row.scan.personalColor,
+      confidence: row.scan.confidence,
+      faceShape: row.scan.faceShape,
+      bestColorPalette: (row.scan.bestColorPalette as unknown as ColorSwatch[] | null) ?? [],
+      matchSummary: row.scan.matchSummary,
+      matchedProductCount: row.matchedProductCount,
+      topMatchedProduct: row.topMatchedProduct,
+      clickedAffiliate: row.clickedAffiliate,
+      estimatedCommission: row.estimatedCommission,
+      location: row.location,
+    };
   }
 
   async recordClick(leadId: string | undefined, listingId: string): Promise<void> {

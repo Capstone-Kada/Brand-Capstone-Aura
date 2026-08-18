@@ -45,6 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'settings', label: 'Admin Settings', icon: Settings },
   ] : [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'ai-pages', label: 'AI Pages', icon: Sparkles },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'products', label: 'Products', icon: ShoppingBag },
     { id: 'ai-pages', label: 'AI Page', icon: Sparkles },

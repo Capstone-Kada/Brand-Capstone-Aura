@@ -248,6 +248,69 @@ export function useBeautyStore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Real-time Dashboard Auto-Sync:
+  // 1. Silent periodic background polling every 5s while on dashboard
+  // 2. Immediate refetch on window focus / tab visibility change
+  useEffect(() => {
+    if (!user || !getAccessToken()) return;
+
+    const isDashboard = ![
+      'landing',
+      'login',
+      'register',
+      'forgot-password',
+      'verify-email',
+      'public-recommendation',
+    ].includes(currentRoute);
+
+    if (!isDashboard) return;
+
+    const syncWorkspace = () => {
+      if (document.hidden) return;
+      if (user.role === 'admin') {
+        loadAdminWorkspace().catch(() => {});
+      } else {
+        loadAffiliatorWorkspace().catch(() => {});
+      }
+    };
+
+    // Polling interval: every 2.5 seconds for true live realtime experience
+    const intervalId = setInterval(syncWorkspace, 2500);
+
+    // Sync immediately when user switches back to this tab
+    const handleFocus = () => syncWorkspace();
+    const handleVisibilityChange = () => {
+      if (!document.hidden) syncWorkspace();
+    };
+
+    // Instant cross-tab sync via BroadcastChannel
+    let channel: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        channel = new BroadcastChannel('aura_realtime_channel');
+        channel.onmessage = (e) => {
+          if (e.data?.type === 'LEAD_SCANNED' || e.data?.type === 'LEAD_FINALIZED') {
+            syncWorkspace();
+          }
+        };
+      } catch {}
+    }
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (channel) {
+        try {
+          channel.close();
+        } catch {}
+      }
+    };
+  }, [user, currentRoute, loadAdminWorkspace, loadAffiliatorWorkspace]);
+
   // Session expired (refresh token missing/invalid) — reset to a logged-out state.
   useEffect(() => {
     const handleSessionExpired = () => {
@@ -492,10 +555,12 @@ export function useBeautyStore() {
     setCurrentRoute(route);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    // Dashboard/Analytics numbers otherwise only ever reflect the initial
-    // session-restore fetch — refresh on every visit so new scans/clicks show up.
-    if ((route === 'dashboard' || route === 'analytics') && user?.role === 'affiliator' && getAccessToken()) {
-      loadAffiliatorWorkspace().catch(() => {});
+    if (getAccessToken()) {
+      if ((route === 'dashboard' || route === 'analytics') && user?.role === 'affiliator') {
+        loadAffiliatorWorkspace().catch(() => {});
+      } else if (route === 'customers') {
+        api.leads.list().then((rows) => setLeads(rows.map(mapCustomerLeadDto))).catch(() => {});
+      }
     }
   }, [user, loadAffiliatorWorkspace]);
 
@@ -749,16 +814,25 @@ export function useBeautyStore() {
 
   // Public Selfie Scan — real AI scan via POST /leads for the active AIPage slug.
   const startSelfieScan = useCallback(
-    async (imageSrc: string, skinPref?: string, finishPref?: string, budgetPref?: string, isUpload: boolean = false): Promise<boolean> => {
+    async (
+      imageSrc: string,
+      skinPref?: string,
+      finishPref?: string,
+      budgetPref?: string,
+      isUpload: boolean = false,
+      currentSlug?: string,
+    ): Promise<boolean> => {
       setScannedImage(imageSrc);
       setIsAnalyzing(true);
       setAnalysisStep(1);
       setScanResult(null);
 
+      const targetSlug = (currentSlug || activePageSlug || 'kate-glow').replace(/^\/+/, '');
+
       try {
         const blob = await (await fetch(imageSrc)).blob();
         const form = new FormData();
-        form.append('slug', activePageSlug);
+        form.append('slug', targetSlug);
         form.append('image', blob, 'scan.jpg');
         if (skinPref) form.append('skinPref', skinPref);
         if (finishPref) form.append('finishPref', finishPref);
@@ -771,6 +845,15 @@ export function useBeautyStore() {
         if (getAccessToken()) {
           const leadRows = await api.leads.list().catch(() => null);
           if (leadRows) setLeads(leadRows.map(mapCustomerLeadDto));
+        }
+
+        // Notify other tabs in realtime
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          try {
+            const ch = new BroadcastChannel('aura_realtime_channel');
+            ch.postMessage({ type: 'LEAD_SCANNED' });
+            ch.close();
+          } catch {}
         }
         return true;
       } catch (err: unknown) {
@@ -800,6 +883,38 @@ export function useBeautyStore() {
       }
     },
     [activePageSlug, addToast],
+  );
+
+  const finalizeLeadProfile = useCallback(
+    async (data: { followerName: string; age?: number | string; followerHandle?: string; email?: string; leadId?: string }): Promise<void> => {
+      try {
+        const activeLeadId = data.leadId || scanResult?.leadId;
+        if (activeLeadId) {
+          await api.leads.updateProfile(activeLeadId, {
+            followerName: data.followerName,
+            followerHandle: data.followerHandle,
+            email: data.email,
+            age: data.age,
+          });
+        }
+        if (getAccessToken()) {
+          const leadRows = await api.leads.list().catch(() => null);
+          if (leadRows) setLeads(leadRows.map(mapCustomerLeadDto));
+        }
+
+        // Notify other tabs in realtime
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          try {
+            const ch = new BroadcastChannel('aura_realtime_channel');
+            ch.postMessage({ type: 'LEAD_FINALIZED' });
+            ch.close();
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('Failed to finalize lead profile:', err);
+      }
+    },
+    [scanResult?.leadId],
   );
 
   const resetScan = useCallback(() => {
@@ -864,6 +979,7 @@ export function useBeautyStore() {
     analysisStep,
     scanResult,
     startSelfieScan,
+    finalizeLeadProfile,
     resetScan,
     recordAffiliateClick,
     reloadWorkspace: loadAffiliatorWorkspace,

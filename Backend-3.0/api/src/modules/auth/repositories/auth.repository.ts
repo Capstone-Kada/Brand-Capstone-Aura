@@ -44,6 +44,17 @@ export class AuthRepository implements IAuthRepository {
                 create: {
                   handle: data.affiliator.handle,
                   apiKey: data.affiliator.apiKey,
+                  pages: {
+                    create: {
+                      slug: data.affiliator.handle,
+                      title: `Beauty Match by ${data.name || 'Creator'}`,
+                      welcomeMessage: 'Upload a selfie and find your holy-grail beauty match in seconds.',
+                      primaryColor: '#ff5a8a',
+                      accentColor: '#ffd166',
+                      allowCameraUpload: true,
+                      status: 'PUBLISHED',
+                    },
+                  },
                 },
               },
             }

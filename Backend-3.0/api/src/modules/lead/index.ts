@@ -39,6 +39,8 @@ export function createLeadModule(deps: LeadModuleDeps): Router {
   );
 
   router.post('/clicks', validateRequest(recordClickSchema), asyncHandler(controller.recordClick));
+  router.patch('/:id', asyncHandler(controller.updateProfile));
+  router.post('/profile', asyncHandler(controller.updateProfile));
 
   router.get(
     '/',

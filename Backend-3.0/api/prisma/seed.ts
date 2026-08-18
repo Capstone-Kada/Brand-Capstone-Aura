@@ -116,11 +116,16 @@ async function seedAdmin(): Promise<void> {
   const adminPasswordHash = await bcrypt.hash('Admin123!', 12);
   await prisma.user.upsert({
     where: { email: adminEmail },
-    update: {},
+    update: {
+      isEmailVerified: true,
+      isTwoFactorEnabled: false,
+    },
     create: {
       email: adminEmail,
       passwordHash: adminPasswordHash,
       role: 'ADMIN',
+      isEmailVerified: true,
+      isTwoFactorEnabled: false,
       profile: {
         create: {
           name: 'Aura Admin',

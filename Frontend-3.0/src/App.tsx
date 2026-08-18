@@ -62,6 +62,7 @@ export default function App() {
     analysisStep,
     scanResult,
     startSelfieScan,
+    finalizeLeadProfile,
     resetScan,
     recordAffiliateClick,
     isLoadingWorkspace,
@@ -147,6 +148,7 @@ export default function App() {
           scanResult={scanResult}
           isPublicView={true}
           onStartScan={startSelfieScan}
+          onFinalizeLead={finalizeLeadProfile}
           onResetScan={resetScan}
           onNavigate={navigateTo}
           onToast={(title, desc) => addToast(title, desc, 'info')}
@@ -166,6 +168,7 @@ export default function App() {
           scanResult={scanResult}
           isPublicView={false}
           onStartScan={startSelfieScan}
+          onFinalizeLead={finalizeLeadProfile}
           onResetScan={resetScan}
           onNavigate={navigateTo}
           onToast={(title, desc) => addToast(title, desc, 'info')}
@@ -280,7 +283,7 @@ export default function App() {
             )}
 
             {currentRoute === 'customers' && (
-              <CustomersView leads={leads} />
+              <CustomersView leads={leads} onRefresh={reloadWorkspace} />
             )}
 
             {currentRoute === 'subscription' && (

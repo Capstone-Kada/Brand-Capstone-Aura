@@ -22,11 +22,16 @@ async function main(): Promise<void> {
 
   const user = await prisma.user.upsert({
     where: { email: DEMO_EMAIL },
-    update: {},
+    update: {
+      isEmailVerified: true,
+      isTwoFactorEnabled: false,
+    },
     create: {
       email: DEMO_EMAIL,
       passwordHash,
       role: 'AFFILIATOR',
+      isEmailVerified: true,
+      isTwoFactorEnabled: false,
       profile: { create: { name: 'Kate Jenkins' } },
     },
   });

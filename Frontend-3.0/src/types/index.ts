@@ -94,6 +94,7 @@ export interface CustomerLead {
   followerName?: string;
   followerHandle?: string;
   email?: string;
+  age?: number | string;
   selfieUrl?: string;
   detectedSkinTone: SkinTone;
   detectedUndertone: Undertone;
@@ -169,6 +170,7 @@ export interface AffiliatorAccount {
 }
 
 export interface AIAnalysisResult {
+  leadId?: string;
   confidence: number; // e.g. 98.6
   personalColor: PersonalColor; // Winter, Spring, Summer, Autumn
   undertone: Undertone; // Cool, Warm, Neutral

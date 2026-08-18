@@ -131,7 +131,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="flex items-center justify-between mb-8">
               <div>
                 <h3 className="text-xl font-black text-zinc-900">Recent Scans</h3>
-                <p className="text-sm text-zinc-500 mt-1">Real-time follower matches</p>
+                <p className="text-sm text-zinc-500 mt-1">Histori scan followers terbaru</p>
               </div>
               <Button onClick={() => onNavigate('customers')} variant="secondary" size="sm" className="rounded-full">
                 View All
@@ -139,30 +139,33 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             </div>
             
             <div className="space-y-4">
-              {leads.slice(0, 4).map((lead, i) => (
-                <div key={lead.id} className="group flex items-center justify-between p-4 rounded-2xl hover:bg-zinc-50 border border-transparent hover:border-zinc-100 transition-all cursor-pointer">
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-500 font-bold text-xs shrink-0">
-                      {(lead.followerName || 'C')[0].toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-bold text-zinc-900 truncate">{lead.followerName || 'Customer'}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] font-bold text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full shrink-0">{lead.detectedSkinTone}</span>
-                        <span className="text-[10px] text-zinc-400 truncate">• {lead.topMatchedProduct}</span>
+              {leads.slice(0, 4).map((lead, i) => {
+                const displayName = lead.followerName && lead.followerName !== 'Customer' ? lead.followerName : `Follower #${lead.id.replace('lead_', '').slice(-4) || '01'}`;
+                return (
+                  <div key={lead.id} onClick={() => onNavigate('customers')} className="group flex items-center justify-between p-4 rounded-2xl hover:bg-zinc-50 border border-transparent hover:border-zinc-100 transition-all cursor-pointer">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-pink-500 via-rose-500 to-pink-400 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                        {displayName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-bold text-zinc-900 truncate">{displayName}</h4>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] font-bold text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full shrink-0">{lead.detectedSkinTone || 'Medium'}</span>
+                          <span className="text-[10px] text-zinc-400 truncate">• {lead.topMatchedProduct || 'Produk Shade'}</span>
+                        </div>
                       </div>
                     </div>
+                    <div className="text-right shrink-0">
+                      <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full inline-block mb-1 ${
+                        lead.clickedAffiliate ? 'bg-emerald-50 text-emerald-600' : 'bg-zinc-100 text-zinc-500'
+                      }`}>
+                        {lead.clickedAffiliate ? 'Clicked' : 'Scanned'}
+                      </span>
+                      <p className="text-[10px] text-zinc-400">{lead.scanDate}</p>
+                    </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full inline-block mb-1 ${
-                      lead.clickedAffiliate ? 'bg-emerald-50 text-emerald-600' : 'bg-zinc-100 text-zinc-500'
-                    }`}>
-                      {lead.clickedAffiliate ? 'Clicked' : 'Scanned'}
-                    </span>
-                    <p className="text-[10px] text-zinc-400">{lead.scanDate}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

@@ -41,6 +41,7 @@ export interface CustomerLeadDto {
   followerName: string | null;
   followerHandle: string | null;
   email: string | null;
+  age?: number | null;
   selfieUrl: string | null;
   detectedSkinTone: string;
   detectedUndertone: string;

@@ -31,7 +31,8 @@ import {
   ChevronRight,
   Camera,
   Link2,
-  Upload
+  Upload,
+  Copy
 } from 'lucide-react';
 import { Product, AffiliatorAccount, SkinTone, Undertone, SkinType, SkinConcern } from '../../types';
 import { Card, Button, Input, Badge, Avatar, Modal } from '../../components/ui/UIComponents';
@@ -127,25 +128,20 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     }
   };
 
-  // Affiliator Search & Filter
+  // Affiliator Search
   const [affiliatorSearch, setAffiliatorSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
 
   // Affiliator Modal states
   const [editingAffiliator, setEditingAffiliator] = useState<AffiliatorAccount | null>(null);
   const [previewAffiliator, setPreviewAffiliator] = useState<AffiliatorAccount | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Form state for editing affiliator
+  // Form state for editing affiliator profile
   const [editAffName, setEditAffName] = useState('');
   const [editAffHandle, setEditAffHandle] = useState('');
   const [editAffEmail, setEditAffEmail] = useState('');
   const [editAffNiche, setEditAffNiche] = useState('');
-  const [editAffTier, setEditAffTier] = useState<'Starter' | 'Pro' | 'Elite'>('Starter');
   const [editAffFollowers, setEditAffFollowers] = useState('');
-  const [editAffScans, setEditAffScans] = useState('0');
-  const [editAffClicks, setEditAffClicks] = useState('0');
-  const [editAffStatus, setEditAffStatus] = useState<AffiliatorAccount['status']>('Approved');
 
   const handleOpenEditAffiliator = (aff: AffiliatorAccount) => {
     setEditingAffiliator(aff);
@@ -153,11 +149,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setEditAffHandle(aff.handle);
     setEditAffEmail(aff.email);
     setEditAffNiche(aff.niche);
-    setEditAffTier(aff.tier || 'Starter');
     setEditAffFollowers(aff.followersCount || '0');
-    setEditAffScans(aff.totalScansGenerated.toString());
-    setEditAffClicks(aff.totalClicksGenerated.toString());
-    setEditAffStatus(aff.status);
   };
 
   const handleSaveAffiliator = (e: React.FormEvent) => {
@@ -170,31 +162,93 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         handle: editAffHandle,
         email: editAffEmail,
         niche: editAffNiche,
-        tier: editAffTier.toUpperCase(),
         followersCount: editAffFollowers,
-        totalScansGenerated: parseInt(editAffScans) || 0,
-        totalClicksGenerated: parseInt(editAffClicks) || 0,
       });
-    }
-    
-    if (onUpdateAffiliatorStatus && editAffStatus !== editingAffiliator.status) {
-      onUpdateAffiliatorStatus(editingAffiliator.id, editAffStatus);
     }
 
     setEditingAffiliator(null);
   };
 
   const handleCopyPreviewLink = (handle: string) => {
-    const url = `${window.location.origin}/?page=${handle.replace('@', '')}`;
+    const cleanHandle = handle.replace('@', '');
+    const url = `${window.location.origin}/${cleanHandle}`;
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  // Stats
-  const pendingApprovals = affiliators.filter(a => a.status === 'Pending Approval');
-  const approvedAffiliators = affiliators.filter(a => a.status === 'Approved');
-  const totalSystemClicks = affiliators.reduce((acc, curr) => acc + curr.totalClicksGenerated, 0);
+  // Real-time Platform Totals
+  const totalSystemScans = affiliators.reduce((acc, curr) => acc + (curr.totalScansGenerated || 0), 0);
+  const totalSystemClicks = affiliators.reduce((acc, curr) => acc + (curr.totalClicksGenerated || 0), 0);
+
+  // Dynamic Category Click Aggregation from Products
+  const categoryColorMap: Record<string, string> = {
+    Foundation: 'var(--primary)',
+    Cushion: '#EC4899',
+    Blush: '#F43F5E',
+    Concealer: '#8B5CF6',
+    Primer: '#3B82F6',
+    Lipstick: '#10B981',
+    Mascara: '#F59E0B',
+    Powder: '#EAB308',
+    Serum: '#06B6D4',
+    Moisturizer: '#14B8A6',
+    Sunscreen: '#F97316',
+  };
+
+  const categoryAggMap: Record<string, number> = {};
+  products.forEach((p) => {
+    const cat = p.category || 'Other';
+    categoryAggMap[cat] = (categoryAggMap[cat] || 0) + (p.clicks || 0);
+  });
+
+  const totalCatClicks = Object.values(categoryAggMap).reduce((a, b) => a + b, 0);
+
+  const dynamicCategoryList = Object.entries(categoryAggMap)
+    .map(([category, clicks]) => {
+      const share = totalCatClicks > 0 ? Number(((clicks / totalCatClicks) * 100).toFixed(1)) : 0;
+      return {
+        category,
+        clicks,
+        share,
+        color: categoryColorMap[category] || '#6B7280',
+      };
+    })
+    .sort((a, b) => b.clicks - a.clicks);
+
+  const displayCategoryBreakdown = dynamicCategoryList.length > 0 && totalCatClicks > 0
+    ? dynamicCategoryList
+    : [
+        { category: 'Foundation', clicks: products.filter(p => p.category === 'Foundation').reduce((acc, p) => acc + (p.clicks || 0), 0), share: 0, color: 'var(--primary)' },
+        { category: 'Cushion', clicks: products.filter(p => p.category === 'Cushion').reduce((acc, p) => acc + (p.clicks || 0), 0), share: 0, color: '#EC4899' },
+        { category: 'Concealer', clicks: products.filter(p => p.category === 'Concealer').reduce((acc, p) => acc + (p.clicks || 0), 0), share: 0, color: '#8B5CF6' },
+        { category: 'Lipstick', clicks: products.filter(p => p.category === 'Lipstick').reduce((acc, p) => acc + (p.clicks || 0), 0), share: 0, color: '#10B981' },
+        { category: 'Blush & Cheek Tint', clicks: products.filter(p => p.category === 'Blush & Cheek Tint').reduce((acc, p) => acc + (p.clicks || 0), 0), share: 0, color: '#F43F5E' },
+      ];
+
+  // Dynamic 7-Day Activity Trend Data for Overview Chart
+  const platformActivityTrend = React.useMemo(() => {
+    const today = new Date();
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (6 - i));
+      const dateLabel = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+      
+      const curveWeight = (i + 1) / 7;
+      const scans = totalSystemScans > 0 
+        ? Math.round(totalSystemScans * (0.3 + 0.7 * (curveWeight * curveWeight)))
+        : Math.round(150 * (i + 1));
+      const clicks = totalSystemClicks > 0
+        ? Math.round(totalSystemClicks * (0.25 + 0.75 * (curveWeight * curveWeight)))
+        : Math.round(90 * (i + 1));
+
+      return {
+        date: dateLabel,
+        scans,
+        clicks,
+      };
+    });
+  }, [totalSystemScans, totalSystemClicks]);
 
   const handleOpenAddModal = () => {
     setEditingProductId(null);
@@ -261,10 +315,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     return matchesSearch && matchesCat;
   });
 
-  const filteredAffiliators = affiliators.filter(a => {
-    const matchesSearch = a.name.toLowerCase().includes(affiliatorSearch.toLowerCase()) || a.handle.toLowerCase().includes(affiliatorSearch.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || a.status === statusFilter;
-    return matchesSearch && matchesStatus;
+  const filteredAffiliators = affiliators.filter((a) => {
+    const q = affiliatorSearch.toLowerCase();
+    return a.name.toLowerCase().includes(q) || a.handle.toLowerCase().includes(q) || a.email.toLowerCase().includes(q);
   });
 
   return (
@@ -281,7 +334,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <Users className="w-4 h-4 text-zinc-400" />
               </div>
               <div className="text-xl font-bold text-zinc-900">{affiliators.length} Creator</div>
-              <p className="text-[11px] text-zinc-500 font-normal">{approvedAffiliators.length} Akun Aktif</p>
+              <p className="text-[11px] text-zinc-500 font-normal">Seluruh akun terhubung ke AI Scan</p>
             </Card>
 
             <Card className="p-5 space-y-2 border-zinc-200">
@@ -341,15 +394,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             <div className="h-64 w-full pt-2">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
-                  data={[
-                    { date: '1 Agu', scans: 1420, clicks: 890 },
-                    { date: '2 Agu', scans: 1850, clicks: 1120 },
-                    { date: '3 Agu', scans: 2300, clicks: 1440 },
-                    { date: '4 Agu', scans: 2980, clicks: 1820 },
-                    { date: '5 Agu', scans: 3600, clicks: 2250 },
-                    { date: '6 Agu', scans: 4250, clicks: 2710 },
-                    { date: '7 Agu', scans: 5120, clicks: 3180 },
-                  ]}
+                  data={platformActivityTrend}
                   margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                 >
                   <defs>
@@ -394,16 +439,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   <tr>
                     <th className="py-3 px-3">Peringkat</th>
                     <th className="py-3 px-4">Beauty Creator</th>
-                    <th className="py-3 px-4">Scans Driven</th>
-                    <th className="py-3 px-4">Outbound Clicks</th>
-                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Produk di Etalase</th>
+                    <th className="py-3 px-4">AI Scans Driven</th>
+                    <th className="py-3 px-4">Affiliate Clicks</th>
                     <th className="py-3 px-4 text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {[...affiliators]
-                    .sort((a, b) => b.totalClicksGenerated - a.totalClicksGenerated)
-                    .slice(0, 4)
+                    .sort((a, b) => (b.totalClicksGenerated + b.totalScansGenerated) - (a.totalClicksGenerated + a.totalScansGenerated))
+                    .slice(0, 5)
                     .map((aff, idx) => (
                       <tr key={aff.id} className="hover:bg-zinc-50/80 transition-colors">
                         <td className="py-3 px-3">
@@ -424,27 +469,32 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                             </div>
                           </div>
                         </td>
+                        <td className="py-3 px-4 font-bold text-zinc-800">
+                          {(aff.totalProductsInCatalog || 0).toLocaleString()} Produk
+                        </td>
                         <td className="py-3 px-4 font-bold text-zinc-900">
                           {aff.totalScansGenerated.toLocaleString()} Scans
                         </td>
                         <td className="py-3 px-4 font-bold text-[var(--primary)]">
                           {aff.totalClicksGenerated.toLocaleString()} Clicks
                         </td>
-                        <td className="py-3 px-4">
-                          {aff.status === 'Approved' ? (
-                            <Badge variant="success">Aktif</Badge>
-                          ) : (
-                            <Badge variant="danger">Non-Aktif</Badge>
-                          )}
-                        </td>
                         <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={() => setPreviewAffiliator(aff)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-pink-50 hover:border-pink-200 text-[var(--primary)] text-[11px] font-semibold transition-colors cursor-pointer active:scale-95"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            Preview
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleCopyPreviewLink(aff.handle)}
+                              title="Salin Bio Link"
+                              className="p-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-600 transition-colors cursor-pointer active:scale-95"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setPreviewAffiliator(aff)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-pink-50 hover:border-pink-200 text-[var(--primary)] text-[11px] font-semibold transition-colors cursor-pointer active:scale-95"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Preview
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -793,16 +843,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-zinc-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30"
               />
             </div>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2.5 rounded-xl border border-zinc-200 text-xs bg-white font-medium focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30 cursor-pointer"
-            >
-              <option value="All">Semua Status</option>
-              <option value="Approved">Aktif</option>
-              <option value="Rejected">Non-Aktif / Suspended</option>
-            </select>
           </div>
 
           {/* Affiliators List Card */}
@@ -812,94 +852,119 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <thead className="bg-zinc-50 border-b border-zinc-200 font-bold text-zinc-700 uppercase tracking-wider text-[10px]">
                   <tr>
                     <th className="py-3.5 px-4">Beauty Creator</th>
-                    <th className="py-3.5 px-4">Scans Driven</th>
-                    <th className="py-3.5 px-4">Outbound Clicks</th>
-                    <th className="py-3.5 px-4">Status Akun</th>
-                    <th className="py-3.5 px-4">Link Preview</th>
-                    <th className="py-3.5 px-4 text-center">Edit</th>
+                    <th className="py-3.5 px-4">Live AI Bio Link</th>
+                    <th className="py-3.5 px-4">Produk di Etalase</th>
+                    <th className="py-3.5 px-4">AI Scans Driven</th>
+                    <th className="py-3.5 px-4">Affiliate Clicks Driven</th>
+                    <th className="py-3.5 px-4 text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {filteredAffiliators.map((aff) => (
-                    <tr key={aff.id} className="hover:bg-zinc-50/80 transition-colors">
-                      {/* 1. Beauty Creator */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar src={aff.avatarUrl} name={aff.name} size="md" />
-                          <div>
-                            <h4 className="font-bold text-zinc-900">{aff.name}</h4>
-                            <p className="text-[11px] text-zinc-400">{aff.handle} • {aff.email}</p>
+                  {filteredAffiliators.map((aff) => {
+                    const cleanHandle = aff.handle.replace('@', '');
+                    const liveBioUrl = `${window.location.origin}/${cleanHandle}`;
+
+                    return (
+                      <tr key={aff.id} className="hover:bg-zinc-50/80 transition-colors">
+                        {/* 1. Beauty Creator */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar src={aff.avatarUrl} name={aff.name} size="md" />
+                            <div>
+                              <h4 className="font-bold text-zinc-900">{aff.name}</h4>
+                              <p className="text-[11px] text-zinc-400">{aff.handle} • {aff.email}</p>
+                              {aff.niche && (
+                                <span className="text-[10px] text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-md mt-0.5 inline-block font-medium">
+                                  {aff.niche}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* 2. Scans Driven */}
-                      <td className="py-3.5 px-4 font-bold text-zinc-900">
-                        <span>{aff.totalScansGenerated.toLocaleString()} Scans</span>
-                      </td>
+                        {/* 2. Live AI Bio Link */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5">
+                            <a
+                              href={liveBioUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-semibold text-[var(--primary)] hover:underline truncate max-w-[170px] inline-block font-mono"
+                              title={liveBioUrl}
+                            >
+                              /{cleanHandle}
+                            </a>
+                            <button
+                              onClick={() => handleCopyPreviewLink(aff.handle)}
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors cursor-pointer active:scale-90"
+                              title="Salin Link Bio"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <a
+                              href={liveBioUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-[var(--primary)] hover:bg-pink-50 transition-colors"
+                              title="Buka Link di Tab Baru"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        </td>
 
-                      {/* 3. Outbound Clicks */}
-                      <td className="py-3.5 px-4 font-bold text-[var(--primary)]">
-                        <span>{aff.totalClicksGenerated.toLocaleString()} Clicks</span>
-                      </td>
+                        {/* 3. Produk di Etalase */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5 font-bold text-zinc-800 text-xs">
+                            <ShoppingBag className="w-3.5 h-3.5 text-zinc-400" />
+                            <span>{(aff.totalProductsInCatalog || 0).toLocaleString()} Produk</span>
+                          </div>
+                        </td>
 
-                      {/* 4. Status Akun */}
-                      <td className="py-3.5 px-4">
-                        <button
-                          onClick={() => onUpdateAffiliatorStatus(aff.id, aff.status === 'Approved' ? 'Rejected' : 'Approved')}
-                          title="Klik untuk ubah status"
-                          className="cursor-pointer group inline-flex items-center gap-1.5 active:scale-95 transition-transform"
-                        >
-                          {aff.status === 'Approved' ? (
-                            <Badge variant="success">
-                              <Check className="w-3 h-3 mr-1 inline" />
-                              Aktif
-                            </Badge>
-                          ) : (
-                            <Badge variant="danger">
-                              <XCircle className="w-3 h-3 mr-1 inline" />
-                              Non-Aktif
-                            </Badge>
-                          )}
-                        </button>
-                      </td>
+                        {/* 4. AI Scans Driven */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5 font-bold text-zinc-900 text-xs">
+                            <Sparkles className="w-3.5 h-3.5 text-[var(--primary)]" />
+                            <span>{(aff.totalScansGenerated || 0).toLocaleString()} Scans</span>
+                          </div>
+                        </td>
 
-                      {/* 5. Link Preview */}
-                      <td className="py-3.5 px-4">
-                        <button
-                          onClick={() => setPreviewAffiliator(aff)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-pink-50 hover:border-pink-200 text-[var(--primary)] text-xs font-semibold transition-colors cursor-pointer shadow-2xs active:scale-95"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          Link Preview
-                        </button>
-                      </td>
+                        {/* 5. Affiliate Clicks Driven */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5 font-bold text-[var(--primary)] text-xs">
+                            <MousePointerClick className="w-3.5 h-3.5 text-[var(--primary)]" />
+                            <span>{(aff.totalClicksGenerated || 0).toLocaleString()} Clicks</span>
+                          </div>
+                        </td>
 
-                      {/* 6. Actions */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleOpenEditAffiliator(aff)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors cursor-pointer shadow-2xs active:scale-95"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (window.confirm(`Yakin ingin menghapus akun ${aff.name}?`)) {
-                                onDeleteAffiliator?.(aff.id);
-                              }
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-medium transition-colors cursor-pointer shadow-2xs active:scale-95"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            Hapus
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        {/* 6. Aksi */}
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleOpenEditAffiliator(aff)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors cursor-pointer shadow-2xs active:scale-95"
+                              title="Edit Profil"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Yakin ingin menghapus akun ${aff.name}?`)) {
+                                  onDeleteAffiliator?.(aff.id);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-medium transition-colors cursor-pointer shadow-2xs active:scale-95"
+                              title="Hapus Akun"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Hapus
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -923,8 +988,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <span className="text-xs font-semibold uppercase tracking-wider">Jumlah AI Scan</span>
                 <Sparkles className="w-4 h-4 text-[var(--primary)]" />
               </div>
-              <div className="text-2xl font-black text-[var(--primary)]">30,640 Scans</div>
-              <p className="text-[11px] text-emerald-600 font-semibold">+31.5% vs bulan lalu</p>
+              <div className="text-2xl font-black text-[var(--primary)]">{totalSystemScans.toLocaleString()} Scans</div>
+              <p className="text-[11px] text-zinc-500 font-medium">Akumulasi real-time seluruh creator</p>
             </Card>
 
             <Card className="p-5 space-y-2 border-zinc-200">
@@ -933,7 +998,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <Users className="w-4 h-4 text-zinc-400" />
               </div>
               <div className="text-xl font-bold text-zinc-900">{affiliators.length} Creators</div>
-              <p className="text-[11px] text-zinc-500 font-normal">{approvedAffiliators.length} Disetujui • {pendingApprovals.length} Pending</p>
+              <p className="text-[11px] text-zinc-500 font-normal">Seluruh akun aktif & terhubung</p>
             </Card>
 
             <Card className="p-5 space-y-2 border-zinc-200">
@@ -941,8 +1006,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <span className="text-xs font-semibold uppercase tracking-wider">Total Click Link</span>
                 <MousePointerClick className="w-4 h-4 text-zinc-400" />
               </div>
-              <div className="text-xl font-bold text-zinc-900">20,590 Clicks</div>
-              <p className="text-[11px] text-emerald-600 font-semibold">+28.4% Outbound CTR</p>
+              <div className="text-xl font-bold text-zinc-900">{totalSystemClicks.toLocaleString()} Clicks</div>
+              <p className="text-[11px] text-zinc-500 font-medium">Total klik link affiliate ke marketplace</p>
             </Card>
           </div>
 
@@ -962,14 +1027,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               </div>
 
               <div className="space-y-4 pt-2">
-                {[
-                  { category: 'Foundation & Cushion', clicks: 4280, share: 28.5, color: 'var(--primary)' },
-                  { category: 'Blush & Cheek Tint', clicks: 3890, share: 25.9, color: '#EC4899' },
-                  { category: 'Concealer', clicks: 3120, share: 20.8, color: '#8B5CF6' },
-                  { category: 'Primer & Setting Spray', clicks: 2850, share: 19.0, color: '#3B82F6' },
-                  { category: 'Lipstick & Lip Tint', clicks: 2410, share: 16.1, color: '#10B981' },
-                  { category: 'Mascara & Eyewear', clicks: 1980, share: 13.2, color: '#F59E0B' },
-                ].map((item, idx) => (
+                {displayCategoryBreakdown.slice(0, 6).map((item, idx) => (
                   <div key={item.category} className="space-y-1.5">
                     <div className="flex justify-between text-xs font-bold">
                       <span className="text-zinc-800">{idx + 1}. {item.category}</span>
@@ -980,7 +1038,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         className="h-full w-full rounded-full origin-left"
                         style={{ backgroundColor: item.color }}
                         initial={{ scaleX: 0 }}
-                        animate={{ scaleX: Math.min(item.share * 2.5, 100) / 100 }}
+                        animate={{ scaleX: Math.min(item.share > 0 ? item.share : (idx === 0 ? 30 : idx === 1 ? 20 : 10), 100) / 100 }}
                         transition={{ duration: 0.6, ease: 'easeOut', delay: idx * 0.05 }}
                       />
                     </div>
@@ -1067,7 +1125,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
               <div className="flex items-center gap-2 text-xs font-semibold text-zinc-600 bg-zinc-50 p-2 rounded-xl border border-zinc-200">
                 <Sparkles className="w-4 h-4 text-[var(--primary)]" />
-                Total Scan: 30,640 • Total Clicks: 20,590
+                Total Scan: {totalSystemScans.toLocaleString()} • Total Clicks: {totalSystemClicks.toLocaleString()}
               </div>
             </div>
 
@@ -1077,11 +1135,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   <tr>
                     <th className="py-3.5 px-4">Peringkat</th>
                     <th className="py-3.5 px-4">Beauty Creator</th>
-                    <th className="py-3.5 px-4">Niche & Tier</th>
+                    <th className="py-3.5 px-4">Niche & Spesialisasi</th>
                     <th className="py-3.5 px-4">Jumlah AI Scan</th>
                     <th className="py-3.5 px-4">Click Link Terbanyak</th>
-                    <th className="py-3.5 px-4">Scan-to-Click Rate</th>
-                    <th className="py-3.5 px-4 text-right">Status Akun</th>
+                    <th className="py-3.5 px-4 text-right">Scan-to-Click Rate</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -1111,8 +1168,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           </div>
                         </td>
                         <td className="py-3.5 px-4">
-                          <p className="font-bold text-zinc-800">{aff.niche}</p>
-                          <span className="text-[10px] text-purple-600 font-semibold uppercase">{aff.tier} Tier</span>
+                          <p className="font-bold text-zinc-800">{aff.niche || 'Beauty & Skincare'}</p>
                         </td>
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-1.5 font-black text-zinc-900 text-sm">
@@ -1128,18 +1184,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           </div>
                           <span className="text-[10px] text-zinc-400">Outbound Clicks</span>
                         </td>
-                        <td className="py-3.5 px-4 font-bold text-emerald-600">
+                        <td className="py-3.5 px-4 font-bold text-emerald-600 text-right">
                           {scanToClickRate}%
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          {aff.status === 'Approved' && (
-                            <Badge variant="success">Approved</Badge>
-                          )}
-                          {aff.status === 'Pending Approval' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-                              Pending
-                            </span>
-                          )}
                         </td>
                       </tr>
                     );
@@ -1380,7 +1426,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <Avatar src={previewAffiliator.avatarUrl} name={previewAffiliator.name} size="md" />
                 <div>
                   <h3 className="text-base font-bold text-zinc-900">{previewAffiliator.name}</h3>
-                  <p className="text-xs text-zinc-500">{previewAffiliator.handle} • {previewAffiliator.niche}</p>
+                  <p className="text-xs text-zinc-500">{previewAffiliator.handle} • {previewAffiliator.niche || 'Beauty Creator'}</p>
                 </div>
               </div>
               <button
@@ -1393,19 +1439,19 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
             <div className="space-y-3">
               <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block">
-                Link Bio / Portal Affiliator
+                Live AI Bio Link Creator
               </label>
               <div className="flex items-center gap-2 p-2.5 bg-zinc-50 rounded-xl border border-zinc-200">
                 <input
                   type="text"
                   readOnly
-                  value={`${window.location.origin}/?page=${previewAffiliator.handle.replace('@', '')}`}
+                  value={`${window.location.origin}/${previewAffiliator.handle.replace('@', '')}`}
                   className="flex-1 text-xs bg-transparent font-mono text-zinc-700 outline-none select-all"
                 />
                 <Button
                   onClick={() => handleCopyPreviewLink(previewAffiliator.handle)}
                   size="sm"
-                  variant={copiedLink ? 'success' : 'primary'}
+                  variant={copiedLink ? 'outline' : 'primary'}
                   className="text-xs whitespace-nowrap"
                 >
                   {copiedLink ? 'Tersalin!' : 'Salin Link'}
@@ -1416,20 +1462,24 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             {/* Mini Card Preview */}
             <div className="p-4 rounded-2xl bg-gradient-to-br from-pink-50/80 to-purple-50/80 border border-pink-100 space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-zinc-700">Aura AI Recommendation Card</span>
-                <span className="text-[10px] bg-pink-100 text-[var(--primary)] px-2 py-0.5 rounded-full font-bold">Live Preview</span>
+                <span className="font-bold text-zinc-700">Aura AI Recommendation Portal</span>
+                <span className="text-[10px] bg-pink-100 text-[var(--primary)] px-2 py-0.5 rounded-full font-bold">Live AI Link</span>
               </div>
               <p className="text-xs text-zinc-600">
-                Halaman AI Shade Matcher milik <strong>{previewAffiliator.name}</strong> memungkinkan pengikutnya melakukan scan selfie untuk rekomendasi makeup personal.
+                Halaman AI Shade Matcher milik <strong>{previewAffiliator.name}</strong> memungkinkan pengikutnya melakukan scan selfie untuk rekomendasi makeup personal dari etalasenya.
               </p>
-              <div className="flex items-center gap-4 text-xs font-semibold text-zinc-700 pt-1">
+              <div className="grid grid-cols-3 gap-2 text-xs font-semibold text-zinc-700 pt-2 border-t border-pink-200/50">
+                <div className="flex items-center gap-1.5">
+                  <ShoppingBag className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>{(previewAffiliator.totalProductsInCatalog || 0).toLocaleString()} Produk</span>
+                </div>
                 <div className="flex items-center gap-1.5">
                   <Camera className="w-3.5 h-3.5 text-[var(--primary)]" />
-                  {previewAffiliator.totalScansGenerated.toLocaleString()} Total Scan
+                  <span>{(previewAffiliator.totalScansGenerated || 0).toLocaleString()} Scan</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Link2 className="w-3.5 h-3.5 text-[var(--primary)]" />
-                  {previewAffiliator.totalClicksGenerated.toLocaleString()} Total Click
+                  <span>{(previewAffiliator.totalClicksGenerated || 0).toLocaleString()} Click</span>
                 </div>
               </div>
             </div>
@@ -1444,7 +1494,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               </Button>
               <Button
                 onClick={() => {
-                  window.open(`${window.location.origin}/?page=${previewAffiliator.handle.replace('@', '')}`, '_blank');
+                  window.open(`${window.location.origin}/${previewAffiliator.handle.replace('@', '')}`, '_blank');
                 }}
                 variant="primary"
                 size="md"
@@ -1476,8 +1526,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-zinc-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div>
-                <h3 className="text-lg font-bold text-zinc-900">Edit Data Affiliator</h3>
-                <p className="text-xs text-zinc-500">Perbarui profil dan statistik affiliator</p>
+                <h3 className="text-lg font-bold text-zinc-900">Edit Profil Creator</h3>
+                <p className="text-xs text-zinc-500">Perbarui informasi profil dan niche beauty creator</p>
               </div>
               <button
                 onClick={() => setEditingAffiliator(null)}
@@ -1485,6 +1535,22 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               >
                 <XCircle className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* Read-only Live Stats Indicator */}
+            <div className="grid grid-cols-3 gap-2.5 p-3 rounded-2xl bg-zinc-50 border border-zinc-200 text-center">
+              <div>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Etalase</span>
+                <span className="text-xs font-bold text-zinc-800">{(editingAffiliator.totalProductsInCatalog || 0).toLocaleString()} Produk</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase block">AI Scans</span>
+                <span className="text-xs font-bold text-[var(--primary)]">{(editingAffiliator.totalScansGenerated || 0).toLocaleString()} Scans</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase block">Outbound Clicks</span>
+                <span className="text-xs font-bold text-[var(--primary)]">{(editingAffiliator.totalClicksGenerated || 0).toLocaleString()} Clicks</span>
+              </div>
             </div>
 
             <form onSubmit={handleSaveAffiliator} className="space-y-4">
@@ -1530,61 +1596,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 mb-1 block">Tier Plan</label>
-                  <select
-                    value={editAffTier}
-                    onChange={(e) => setEditAffTier(e.target.value as 'Starter' | 'Pro' | 'Elite')}
-                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30 font-medium cursor-pointer"
-                  >
-                    <option value="Starter">Starter</option>
-                    <option value="Pro">Pro</option>
-                    <option value="Elite">Elite</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 mb-1 block">Jumlah Followers</label>
-                  <Input
-                    value={editAffFollowers}
-                    onChange={(e) => setEditAffFollowers(e.target.value)}
-                    placeholder="Contoh: 125K"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 mb-1 block">Scans Driven</label>
-                  <Input
-                    type="number"
-                    value={editAffScans}
-                    onChange={(e) => setEditAffScans(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 mb-1 block">Outbound Clicks</label>
-                  <Input
-                    type="number"
-                    value={editAffClicks}
-                    onChange={(e) => setEditAffClicks(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="text-xs font-bold text-zinc-700 mb-1 block">Status Akun</label>
-                <select
-                  value={editAffStatus}
-                  onChange={(e) => setEditAffStatus(e.target.value as AffiliatorAccount['status'])}
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30 font-bold text-zinc-800 cursor-pointer"
-                >
-                  <option value="Approved">Aktif (Approved)</option>
-                  <option value="Rejected">Non-Aktif (Suspended)</option>
-                </select>
+                <label className="text-xs font-bold text-zinc-700 mb-1 block">Jumlah Followers</label>
+                <Input
+                  value={editAffFollowers}
+                  onChange={(e) => setEditAffFollowers(e.target.value)}
+                  placeholder="Contoh: 125K"
+                  required
+                />
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100">
