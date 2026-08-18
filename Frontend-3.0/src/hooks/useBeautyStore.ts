@@ -106,6 +106,26 @@ export function useBeautyStore() {
     if (path === 'verify-email') {
       return 'verify-email';
     }
+    const knownRoutes: RouteView[] = [
+      'landing',
+      'login',
+      'register',
+      'forgot-password',
+      'dashboard',
+      'analytics',
+      'products',
+      'ai-pages',
+      'customers',
+      'subscription',
+      'settings',
+      'admin-dashboard',
+      'admin-products',
+      'admin-affiliators',
+      'admin-analytics',
+    ];
+    if (knownRoutes.includes(path as RouteView)) {
+      return path as RouteView;
+    }
     // If the path looks like a username/slug (not empty), default to public-recommendation
     if (path && path.length > 2) {
       return 'public-recommendation';
@@ -143,7 +163,12 @@ export function useBeautyStore() {
   // Selected AI page for public view
   const [activePageSlug, setActivePageSlug] = useState<string>(() => {
     const path = window.location.pathname.replace('/', '');
-    if (path && path.length > 2) return path;
+    const knownRoutes = [
+      'landing', 'login', 'register', 'forgot-password', 'dashboard', 'analytics', 
+      'products', 'ai-pages', 'customers', 'subscription', 'settings', 'verify-email',
+      'admin-dashboard', 'admin-products', 'admin-affiliators', 'admin-analytics'
+    ];
+    if (path && path.length > 2 && !knownRoutes.includes(path)) return path;
     return 'kate-glow';
   });
 

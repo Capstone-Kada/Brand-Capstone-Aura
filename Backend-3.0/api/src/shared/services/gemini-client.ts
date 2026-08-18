@@ -35,7 +35,7 @@ const geminiResponseSchema = z.object({
     .array(
       z.object({
         content: z.object({
-          parts: z.array(z.object({ text: z.string() })).min(1),
+          parts: z.array(z.object({ text: z.string().optional() })).min(1),
         }),
       }),
     )
@@ -135,7 +135,7 @@ export class GeminiClient implements IGeminiClient {
         ],
         generationConfig: {
           temperature: 0.35,
-          maxOutputTokens: 250,
+          maxOutputTokens: 1000,
         },
       };
 
@@ -154,7 +154,10 @@ export class GeminiClient implements IGeminiClient {
         return null;
       }
 
-      let text = parsed.data.candidates[0].content.parts[0].text.trim();
+      let text = parsed.data.candidates[0].content.parts
+        .map((p) => p.text ?? '')
+        .join('')
+        .trim();
       // Clean any accidental markdown headers or quotes
       text = text.replace(/^["']|["']$/g, '').replace(/^[#*]+\s*/g, '').trim();
 

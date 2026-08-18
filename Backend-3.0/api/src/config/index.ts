@@ -38,7 +38,7 @@ export const appConfig = {
   gemini: {
     apiKey: config.GEMINI_API_KEY,
     model: config.GEMINI_MODEL,
-    timeoutMs: 15_000,
+    timeoutMs: 30_000,
   },
   corsOrigin: config.CORS_ORIGIN,
   rateLimit: {

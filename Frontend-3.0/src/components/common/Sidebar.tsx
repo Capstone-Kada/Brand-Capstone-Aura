@@ -10,7 +10,8 @@ import {
   ExternalLink,
   LogOut,
   ChevronRight,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import { RouteView, UserProfile } from '../../types';
 import { Avatar, Button, Modal } from '../ui/UIComponents';
@@ -46,6 +47,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'products', label: 'Products', icon: ShoppingBag },
+    { id: 'ai-pages', label: 'AI Page', icon: Sparkles },
     { id: 'customers', label: 'Audience', icon: Users },
     { id: 'subscription', label: 'Subscription', icon: CreditCard },
     { id: 'settings', label: 'Settings', icon: Settings },

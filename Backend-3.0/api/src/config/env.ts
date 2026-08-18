@@ -41,7 +41,7 @@ const envSchema = z.object({
   // narrative gracefully degrades to null (frontend falls back to its own
   // template) when unset, so the app still boots without it.
   GEMINI_API_KEY: z.string().min(1).optional(),
-  GEMINI_MODEL: z.string().default('gemini-flash-latest'),
+  GEMINI_MODEL: z.string().default('gemini-3.5-flash-lite'),
   CORS_ORIGIN: z.string().default('*'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
