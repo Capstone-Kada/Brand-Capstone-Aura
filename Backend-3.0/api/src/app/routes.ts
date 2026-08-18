@@ -19,7 +19,10 @@ import { createSubscriptionModule } from '../modules/subscription/index.js';
 export function createApiRouter(container: AppContainer): Router {
   const router = Router();
 
-  router.use('/auth', createAuthModule({ authRepository: container.authRepository }));
+  router.use(
+    '/auth',
+    createAuthModule({ authRepository: container.authRepository, emailService: container.emailService }),
+  );
   router.use('/users', createUserModule({ userRepository: container.userRepository }));
   router.use('/profile', createProfileModule({ profileRepository: container.profileRepository }));
   router.use(
@@ -57,7 +60,10 @@ export function createApiRouter(container: AppContainer): Router {
   );
   router.use(
     '/affiliators',
-    createAffiliatorModule({ affiliatorRepository: container.affiliatorRepository }),
+    createAffiliatorModule({
+      affiliatorRepository: container.affiliatorRepository,
+      storageService: container.storageService,
+    }),
   );
   router.use(
     '/ai-pages',

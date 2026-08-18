@@ -47,6 +47,14 @@ export const resetPasswordSchema = z.object({
   password: passwordSchema,
 });
 
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1),
+});
+
+export const resendVerificationSchema = z.object({
+  email: z.string().email().transform((v) => v.toLowerCase().trim()),
+});
+
 export const enable2faSchema = z.object({
   token: z.string().min(6).max(6),
 });
@@ -63,5 +71,7 @@ export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 export type LogoutInput = z.infer<typeof logoutSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
 export type Enable2FAInput = z.infer<typeof enable2faSchema>;
 export type Verify2FAInput = z.infer<typeof verify2faSchema>;

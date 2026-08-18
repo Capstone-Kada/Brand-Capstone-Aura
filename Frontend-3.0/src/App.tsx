@@ -9,6 +9,7 @@ import { Avatar } from './components/ui/UIComponents';
 // Views
 import { LandingPage } from './features/landing/LandingPage';
 import { AuthPages } from './features/auth/AuthPages';
+import { VerifyEmailPage } from './features/auth/VerifyEmailPage';
 import { OverviewView } from './features/dashboard/OverviewView';
 import { AnalyticsView } from './features/dashboard/AnalyticsView';
 import { ProductsView } from './features/dashboard/ProductsView';
@@ -28,11 +29,16 @@ export default function App() {
     verify2FA,
     loginWithGoogle,
     registerAffiliator,
+    emailVerifyToken,
+    verifyEmailToken,
+    resendVerification,
     activePageSlug,
     affiliators,
     updateAffiliatorStatus,
     updateAffiliator,
+    deleteAffiliator,
     updateProfile,
+    uploadAvatar,
     regenerateApiKey,
     products,
     masterCatalog,
@@ -115,7 +121,17 @@ export default function App() {
           onVerify2FA={verify2FA}
           onRegister={registerAffiliator}
           onGoogleLogin={loginWithGoogle}
+          onResendVerification={resendVerification}
           onSuccess={() => addToast('Welcome to Aura!', 'Portal is ready.', 'success')}
+        />
+      )}
+
+      {/* EMAIL VERIFICATION LANDING PAGE (from the link in the verification email) */}
+      {currentRoute === 'verify-email' && (
+        <VerifyEmailPage
+          token={emailVerifyToken}
+          onVerify={verifyEmailToken}
+          onNavigate={navigateTo}
         />
       )}
 
@@ -279,6 +295,7 @@ export default function App() {
               <SettingsView
                 user={user}
                 onUpdateProfile={updateProfile}
+                onUploadAvatar={uploadAvatar}
                 onRegenerateKey={regenerateApiKey}
                 onCopyLink={handleCopyLink}
                 onToast={(title, desc) => addToast(title, desc, 'info')}

@@ -10,7 +10,7 @@ import type {
   UserProfile,
 } from '../types';
 
-const API_URL = (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = '/api';
 
 const TOKEN_KEY = 'aura_access_token';
 const REFRESH_TOKEN_KEY = 'aura_refresh_token';
@@ -90,8 +90,11 @@ http.interceptors.response.use(
         return http(originalRequest);
       }
 
+      const hadToken = Boolean(getAccessToken() || getRefreshToken());
       setTokens(null, null);
-      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      if (hadToken) {
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      }
     }
 
     return Promise.reject(error);
@@ -118,6 +121,9 @@ interface AuthResponseDto {
   tokens?: { accessToken: string; refreshToken: string; expiresIn: string; tokenType: string };
   requires2FA?: boolean;
   userId?: string;
+  requiresEmailVerification?: boolean;
+  email?: string;
+  retryAfterSeconds?: number;
 }
 
 interface AffiliatorProfileDto {
@@ -449,12 +455,21 @@ export const api = {
       return result;
     },
     disable2FA: (): Promise<void> => unwrap(http.post('/auth/2fa/disable')),
+    verifyEmail: (token: string): Promise<{ message: string }> =>
+      unwrap(http.post('/auth/verify-email', { token })),
+    resendVerification: (email: string): Promise<{ message: string; retryAfterSeconds?: number }> =>
+      unwrap(http.post('/auth/resend-verification', { email })),
   },
 
   affiliator: {
     me: (): Promise<AffiliatorProfileDto> => unwrap(http.get('/affiliators/me')),
     update: (data: Partial<AffiliatorProfileDto>): Promise<AffiliatorProfileDto> => unwrap(http.patch('/affiliators/me', data)),
     regenerateApiKey: (): Promise<AffiliatorProfileDto> => unwrap(http.post('/affiliators/me/api-key/regenerate')),
+    uploadAvatar: (file: File): Promise<AffiliatorProfileDto> => {
+      const form = new FormData();
+      form.append('image', file);
+      return unwrap(http.post('/affiliators/me/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } }));
+    },
     adminList: (): Promise<AffiliatorProfileDto[]> => unwrap(http.get('/affiliators')),
     adminUpdateStatus: (id: string, status: AffiliatorAccount['status']): Promise<AffiliatorProfileDto> =>
       unwrap(http.patch(`/affiliators/${id}/status`, { status })),
@@ -508,6 +523,10 @@ export const api = {
     plans: (): Promise<any[]> => unwrap(http.get('/subscriptions/plans')),
     checkout: (plan: 'PRO' | 'ELITE'): Promise<{ orderId: string; snapToken: string; redirectUrl: string; amount: number; plan: 'PRO' | 'ELITE' }> =>
       unwrap(http.post('/subscriptions/checkout', { plan })),
+    confirm: (plan: 'PRO' | 'ELITE', orderId?: string): Promise<any> =>
+      unwrap(http.post('/subscriptions/confirm', { plan, orderId })),
+    cancel: (): Promise<any> =>
+      unwrap(http.post('/subscriptions/cancel')),
   },
 };
 

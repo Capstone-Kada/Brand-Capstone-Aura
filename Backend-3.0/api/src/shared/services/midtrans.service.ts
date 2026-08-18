@@ -45,6 +45,18 @@ export class MidtransService {
       credit_card: {
         secure: true,
       },
+      enabled_payments: [
+        'qris',
+        'gopay',
+        'shopeepay',
+        'bca_va',
+        'bni_va',
+        'bri_va',
+        'echannel',
+        'permata_va',
+        'other_va',
+        'credit_card',
+      ],
       customer_details: {
         first_name: params.customerDetails.firstName,
         email: params.customerDetails.email,
@@ -62,12 +74,7 @@ export class MidtransService {
       };
     } catch (error: any) {
       logger.error('Failed to create Midtrans transaction', { error: error?.message, orderId: params.orderId });
-      // If Midtrans API fails (e.g. placeholder keys during local demo), provide a fallback mock token
-      const mockToken = `mock-snap-${Date.now()}`;
-      return {
-        token: mockToken,
-        redirectUrl: `https://app.sandbox.midtrans.com/snap/v2/vtweb/${mockToken}`,
-      };
+      throw new Error(`Midtrans API Error: ${error?.message || 'Transaction failed'}`);
     }
   }
 

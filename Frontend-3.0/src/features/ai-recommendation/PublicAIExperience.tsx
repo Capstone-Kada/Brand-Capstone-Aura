@@ -38,12 +38,10 @@ import {
   LockClosedIcon as LockClosedIconSolid
 } from '@heroicons/react/24/solid';
 import { RouteView, Product, AIAnalysisResult, UserProfile } from '../../types';
-import { Button, Card, Badge, Progress } from '../../components/ui/UIComponents';
-import { Modal } from '../../components/ui/Modal';
+import { Button, Card, Badge, Progress, Modal } from '../../components/ui/UIComponents';
 import { PremiumLoader } from '../../components/ui/PremiumLoader';
 import { api, mapListingToProduct, type PublicAIPageDto } from '../../services/api';
 import confetti from 'canvas-confetti';
-import { MOCK_PRODUCTS } from '../../services/mockData';
 
 interface PublicAIExperienceProps {
   user: UserProfile;
@@ -54,7 +52,7 @@ interface PublicAIExperienceProps {
   analysisStep: number;
   scanResult: AIAnalysisResult | null;
   isPublicView?: boolean;
-  onStartScan: (img: string, skinPref?: string, finishPref?: string, budgetPref?: string) => void;
+  onStartScan: (img: string, skinPref?: string, finishPref?: string, budgetPref?: string, isUpload?: boolean) => Promise<boolean> | void;
   onResetScan: () => void;
   onNavigate: (route: RouteView) => void;
   onToast: (title: string, desc?: string, type?: 'success' | 'error' | 'info') => void;
@@ -136,8 +134,6 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     };
   }, [pageSlug]);
 
-  const baseProducts = publicPageData && publicPageData.featuredListings.length > 0 ? publicPageData.featuredListings.map(mapListingToProduct) : productsProp;
-  const products = baseProducts.length > 0 ? baseProducts : MOCK_PRODUCTS;
   const creator = publicPageData
     ? {
         name: publicPageData.creatorName || publicPageData.title,
@@ -268,6 +264,35 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     }
   };
 
+  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Client-Side Face Pre-Check (Option C): validates whether human face is present before or during submission
+  const checkClientFace = async (imgSource: HTMLCanvasElement | HTMLImageElement | string): Promise<boolean | null> => {
+    if (typeof window !== 'undefined' && 'FaceDetector' in window) {
+      try {
+        const detector = new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+        let target: HTMLCanvasElement | HTMLImageElement;
+        if (typeof imgSource === 'string') {
+          const img = new Image();
+          img.src = imgSource;
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+          });
+          target = img;
+        } else {
+          target = imgSource;
+        }
+        const faces = await detector.detect(target);
+        return Array.isArray(faces) && faces.length > 0;
+      } catch (err) {
+        console.warn('Browser FaceDetector check error/unsupported:', err);
+        return null;
+      }
+    }
+    return null;
+  };
+
   const stopCamera = () => {
     if (videoRef.current && videoRef.current.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
@@ -277,6 +302,7 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     setIsCameraActive(false);
   };
 
+  // Direct Live Camera Scan: smooth flow without strict blocking
   const takeSnapshot = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
@@ -288,33 +314,38 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg');
         stopCamera();
-        initiateScanProcess(dataUrl);
+        initiateScanProcess(dataUrl, false); // isUpload = false (direct camera scan)
         return;
       }
     }
     stopCamera();
   };
 
+  // Upload Flow: Strict Option C (client-side pre-check) + Option A (backend rejection)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         if (typeof reader.result === 'string') {
-          initiateScanProcess(reader.result);
+          const imgData = reader.result;
+          // Option C: Client-Side Face Pre-Check for uploaded images
+          const hasFace = await checkClientFace(imgData);
+          if (hasFace === false) {
+            onToast('Wajah Tidak Terdeteksi', 'Foto yang diunggah tidak terdeteksi memiliki wajah manusia yang jelas. Mohon gunakan foto selfie yang jelas.', 'error');
+            return;
+          }
+          stopCamera();
+          initiateScanProcess(imgData, true); // isUpload = true (strict upload flow)
         }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // Trigger Scanning Process Animation (Configured to 8 Seconds total)
-  // Real AI analysis is kicked off in parallel via onStartScan — the cosmetic
-  // progress bar below is independent of when the API call actually resolves;
-  // the 'result' step (several steps later) reads the live `scanResult` prop.
-  const initiateScanProcess = (imgUrl: string) => {
+  // Trigger Scanning Process Animation
+  const initiateScanProcess = async (imgUrl: string, isUpload: boolean = false) => {
     setCapturedImage(imgUrl);
-    // API call is now deferred until after questionnaire (in handleFinalizeResult)
     setCurrentStep('scanning');
     setScanProgress(0);
     setSelectedArea(null);
@@ -326,28 +357,59 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     setSubQuestionIndex(0);
     setScanStatusText('Detecting contour patterns & facial features...');
 
-    const interval = setInterval(() => {
+    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+
+    // Smoothly progress up to 90% while AI analysis is actively running
+    scanIntervalRef.current = setInterval(() => {
       setScanProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setCurrentStep('select-area');
-          }, 800);
-          return 100;
+        if (prev >= 90) {
+          return 90; // Wait at 90% until AI call resolves
         }
-        const next = prev + 1;
+        const next = prev + 3;
         if (next >= 25 && next < 50) {
           setScanStatusText('Analyzing pigmentation levels & moisture...');
         } else if (next >= 50 && next < 75) {
           setScanStatusText('Analyzing undertone spectrum & skin tone...');
-        } else if (next >= 75 && next < 95) {
+        } else if (next >= 75) {
           setScanStatusText('Mengomparasi spektrum warna dengan database AI...');
-        } else if (next >= 95) {
-          setScanStatusText('AI Scan Complete!');
         }
         return next;
       });
-    }, 80); // 80ms * 100 ticks = 8000ms (8 detik)
+    }, 35);
+
+    // Run real AI analysis in backend. The analysis screen should read as a
+    // deliberate ~8s process regardless of how fast the API actually responds.
+    const MIN_SCAN_DURATION_MS = 8000;
+    try {
+      const minDuration = new Promise<void>((resolve) => setTimeout(resolve, MIN_SCAN_DURATION_MS));
+      const scanPromise = onStartScan(imgUrl, undefined, undefined, undefined, isUpload);
+      const [success] = await Promise.all([
+        scanPromise instanceof Promise ? scanPromise : Promise.resolve(true),
+        minDuration,
+      ]);
+
+      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+
+      if (success === false) {
+        // Rejected by backend validation (no face detected, or not a valid human face).
+        setCapturedImage(null);
+        setScanProgress(0);
+        setCurrentStep('camera-guide');
+        return;
+      }
+
+      // Scan succeeded! Complete animation to 100% and proceed to questionnaire
+      setScanProgress(100);
+      setScanStatusText('AI Scan Complete!');
+      setTimeout(() => {
+        setCurrentStep('select-area');
+      }, 350);
+    } catch {
+      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+      setCapturedImage(null);
+      setScanProgress(0);
+      setCurrentStep('camera-guide');
+    }
   };
 
   const handleProceedToNameStep = () => {
@@ -358,11 +420,6 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
     if (!customerName.trim()) {
       onToast('Masukkan Nama', 'Silakan isi nama Anda terlebih dahulu.', 'error');
       return;
-    }
-    
-    // Kick off the real API scan now that we have all the user's preferences
-    if (capturedImage) {
-      onStartScan(capturedImage, selectedArea || undefined, finishPref, budgetPref);
     }
     
     setCurrentStep('result');
@@ -412,24 +469,18 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
   };
 
   const getRelevantProducts = () => {
-    let baseProducts = scanResult && scanResult.recommendedProducts.length > 0
-      ? scanResult.recommendedProducts.map((m) => m.product)
-      : products;
+    // Sourced strictly from the backend's already affiliator-scoped, budget-filtered
+    // recommendations — never the wider unfiltered catalog. If nothing matches for
+    // the selected category (or at all), the result is honestly empty, not padded
+    // with real-but-mismatched (wrong price/category) products.
+    const baseProducts = scanResult ? scanResult.recommendedProducts.map((m) => m.product) : [];
 
     if (selectedArea === 'bibir') {
-      let lips = baseProducts.filter((p) => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category));
-      // If AI didn't return any lip products, fallback to searching the entire affiliator catalog
-      if (lips.length === 0) {
-        lips = products.filter((p) => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category));
-      }
+      const lips = baseProducts.filter((p) => p.mainCategory === 'Lips' || ['Lipstick', 'Lip Tint', 'Lip Cream', 'Lip Velvet', 'Lip Gloss', 'Lip Balm'].includes(p.category));
       return lips.length > 0 ? lips : baseProducts;
     }
 
-    let face = baseProducts.filter((p) => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer', 'Eyeshadow'].includes(p.category));
-    // If AI didn't return any face products, fallback to searching the entire affiliator catalog
-    if (face.length === 0) {
-      face = products.filter((p) => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer', 'Eyeshadow'].includes(p.category));
-    }
+    const face = baseProducts.filter((p) => p.mainCategory === 'Face & Shade' || ['Cushion', 'Foundation', 'Concealer', 'Blush & Cheek Tint', 'Powder', 'Contour & Bronzer', 'Eyeshadow'].includes(p.category));
     return face.length > 0 ? face : baseProducts;
   };
 
@@ -1050,10 +1101,11 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                   <div className="my-2 z-10 text-center w-full">
                     <button
                       onClick={startCamera}
-                      className="bg-[#18181B] hover:bg-[#27272A] text-white font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
-                      style={{ padding: '10px 30px' }}
+                      className="bg-[#18181B] hover:bg-[#27272A] text-white font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 inline-flex items-center justify-center gap-2"
+                      style={{ padding: '10px 32px' }}
                     >
-                      Scan Your Face
+                      <Camera className="w-4 h-4 stroke-[2.2]" />
+                      <span>Scan Your Face</span>
                     </button>
                   </div>
 
@@ -1170,16 +1222,29 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                     </div>
                   </div>
 
-                  {/* SNAP BUTTON */}
-                  <div className="my-2 z-10 text-center w-full">
+                  {/* ACTION BUTTONS: SNAP & UPLOAD */}
+                  <div className="my-2 z-10 flex items-center justify-center gap-3 flex-wrap w-full">
                     <button
                       onClick={takeSnapshot}
                       className="bg-[#18181B] hover:bg-[#27272A] text-white font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 inline-flex items-center gap-2"
-                      style={{ padding: '10px 30px' }}
+                      style={{ padding: '10px 28px' }}
                     >
                       <Camera className="w-4 h-4 stroke-[2.2]" />
                       <span>Take Photo</span>
                     </button>
+                    <label
+                      className="bg-white/85 hover:bg-white text-[#18181B] font-medium font-['Satoshi'] tracking-[-0.05em] rounded-full text-sm shadow-md transition-all cursor-pointer hover:scale-105 active:scale-95 inline-flex items-center gap-2 border border-white/90 backdrop-blur-md"
+                      style={{ padding: '10px 22px' }}
+                    >
+                      <Upload className="w-4 h-4 stroke-[2.2]" />
+                      <span>Upload Foto</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
 
                 </div>
@@ -1330,9 +1395,9 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
                         {[
-                          { title: '< Rp. 100.000', subtitle: 'Affordable everyday beauty essentials', icon: '🏷️' },
-                          { title: '< Rp. 200.000', subtitle: 'Popular mid-range favorites & bestsellers', icon: '💎' },
-                          { title: '< Rp. 300.000', subtitle: 'Premium formulas & high-end luxury products', icon: '👑' },
+                          { title: '< Rp 100.000', subtitle: 'Affordable everyday beauty essentials', icon: '🏷️' },
+                          { title: 'Rp 101.000 - Rp 200.000', subtitle: 'Popular mid-range favorites & bestsellers', icon: '💎' },
+                          { title: 'Rp 201.000 - Rp 300.000', subtitle: 'Premium formulas & high-end luxury products', icon: '👑' },
                         ].map((item) => {
                           const isSelected = budgetPref === item.title;
                           return (
@@ -1814,6 +1879,15 @@ export const PublicAIExperience: React.FC<PublicAIExperienceProps> = ({
                             {/* Decorative background glow for the robot */}
                             <div className="absolute -right-4 bottom-0 w-48 h-48 bg-rose-200/40 rounded-full blur-3xl pointer-events-none" />
                           </div>
+
+                          {getRelevantProducts().length === 0 && (
+                            <div className="rounded-3xl border border-zinc-100 shadow-sm bg-white p-6 text-center">
+                              <p className="text-sm font-bold text-[#1D1B26]">No matching products yet</p>
+                              <p className="text-xs text-[#61657A] mt-1">
+                                This creator doesn't have a product in this category/budget in their catalog right now — check back soon!
+                              </p>
+                            </div>
+                          )}
 
                           <div className="overflow-x-auto rounded-3xl border border-zinc-100 shadow-sm bg-white pt-5 pb-2 px-2">
                             <div className="min-w-[700px]">

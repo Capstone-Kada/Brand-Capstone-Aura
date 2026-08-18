@@ -5,6 +5,8 @@ import { GeminiClient, type IGeminiClient } from '../shared/services/gemini-clie
 import type { IStorageService } from '../shared/services/storage.service.js';
 import { SupabaseStorageService } from '../shared/services/supabase-storage.service.js';
 import { LocalStorageService } from '../shared/services/local-storage.service.js';
+import type { IEmailService } from '../shared/services/email.service.js';
+import { ResendEmailService, ConsoleEmailService } from '../shared/services/email.service.js';
 import { AuthRepository } from '../modules/auth/repositories/auth.repository.js';
 import { UserRepository } from '../modules/user/repositories/user.repository.js';
 import { ProfileRepository } from '../modules/profile/repositories/profile.repository.js';
@@ -42,6 +44,7 @@ export interface AppContainer {
   aiPageRepository: AIPageRepository;
   listingRepository: ListingRepository;
   storageService: IStorageService;
+  emailService: IEmailService;
 }
 
 /**
@@ -60,10 +63,27 @@ function createStorageService(): IStorageService {
   return new LocalStorageService(appConfig.upload.dir, appConfig.upload.publicBaseUrl);
 }
 
+/**
+ * Picks the Resend API email sender when configured, otherwise
+ * falls back to logging the verification link (dev/CI). See
+ * shared/services/email.service.ts.
+ */
+function createEmailService(): IEmailService {
+  if (appConfig.email.isConfigured) {
+    // Reusing the existing functionSecret config as the Resend API Key to avoid changing environment variables
+    return new ResendEmailService(
+      appConfig.email.functionSecret as string,
+      appConfig.email.fromAddress as string,
+    );
+  }
+  return new ConsoleEmailService();
+}
+
 export function createContainer(
   db: PrismaClient,
   aiClient?: IAiClient,
   storageService?: IStorageService,
+  emailService?: IEmailService,
 ): AppContainer {
   const ingredientRepository = new IngredientRepository(db);
   const productRepository = new ProductRepository(db);
@@ -98,5 +118,6 @@ export function createContainer(
     aiPageRepository: new AIPageRepository(db),
     listingRepository: new ListingRepository(db),
     storageService: storageService ?? createStorageService(),
+    emailService: emailService ?? createEmailService(),
   };
 }

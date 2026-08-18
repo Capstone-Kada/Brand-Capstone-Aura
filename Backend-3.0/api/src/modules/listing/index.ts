@@ -9,6 +9,7 @@ import {
   ListingController,
   autoFillSchema,
   createListingSchema,
+  idParamSchema,
   updateListingSchema,
 } from './controllers/listing.controller.js';
 import type { IListingRepository } from './interfaces/listing.repository.interface.js';
@@ -29,8 +30,13 @@ export function createListingModule(deps: ListingModuleDeps): Router {
   router.get('/', asyncHandler(controller.list));
   router.post('/', validateRequest(createListingSchema), asyncHandler(controller.create));
   router.post('/auto-fill', validateRequest(autoFillSchema), asyncHandler(controller.autoFill));
-  router.patch('/:id', validateRequest(updateListingSchema), asyncHandler(controller.update));
-  router.delete('/:id', asyncHandler(controller.delete));
+  router.patch(
+    '/:id',
+    validateRequest(idParamSchema, 'params'),
+    validateRequest(updateListingSchema),
+    asyncHandler(controller.update),
+  );
+  router.delete('/:id', validateRequest(idParamSchema, 'params'), asyncHandler(controller.delete));
 
   return router;
 }

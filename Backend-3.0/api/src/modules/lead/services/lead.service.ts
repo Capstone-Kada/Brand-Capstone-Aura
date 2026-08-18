@@ -10,7 +10,9 @@ import {
   derivePersonalColor,
   normalizeSkinTone,
   normalizeUndertone,
+  parseBudgetRangeIDR,
   rankListingsFromDataset,
+  type PriceRange,
 } from '../../recommendation/engine/dataset-rule-engine.js';
 import type {
   CustomerLeadDto,
@@ -69,9 +71,26 @@ export class LeadService {
   ) {}
 
   async submitPublicScan(input: SubmitLeadInput): Promise<LeadScanResultDto> {
-    const page = await this.db.aIPage.findUnique({ where: { slug: input.slug } });
-    if (!page || page.status !== 'PUBLISHED') {
-      throw new NotFoundError('Page not found');
+    let page = await this.db.aIPage.findUnique({ where: { slug: input.slug } });
+    if (!page) {
+      const affiliator = await this.db.affiliatorProfile.findFirst({
+        where: { handle: input.slug, status: 'APPROVED' },
+      });
+      if (!affiliator) {
+        throw new NotFoundError('Page not found');
+      }
+      page = await this.db.aIPage.create({
+        data: {
+          affiliatorId: affiliator.id,
+          slug: affiliator.handle,
+          title: `${affiliator.handle}'s Beauty AI`,
+          bio: affiliator.niche ? `Find your perfect makeup matches for ${affiliator.niche}` : 'Find your perfect shade with my AI skin analyst!',
+          primaryColor: '#F26CA7',
+          accentColor: '#18181B',
+          status: 'PUBLISHED',
+          allowCameraUpload: true,
+        },
+      });
     }
 
     // Persist the selfie and run inference in parallel — independent I/O,
@@ -100,7 +119,8 @@ export class LeadService {
     // Computed before scan.create (doesn't depend on scan.id) so both the
     // matched products and the generated narrative can be persisted in a
     // single write below, instead of a create-then-update.
-    const matches = await this.buildRecommendations(page.affiliatorId, personalColor, prediction.undertone, prediction.skin_tone);
+    const budgetRange = parseBudgetRangeIDR(input.budgetPref);
+    const matches = await this.buildRecommendations(page.affiliatorId, personalColor, prediction.undertone, prediction.skin_tone, budgetRange);
 
     // RAG-style narrative: retrieval already happened above (shadeMapping +
     // matches, both from real DB data), Gemini just phrases it. Never
@@ -200,6 +220,7 @@ export class LeadService {
     personalColor: Awaited<ReturnType<typeof derivePersonalColor>>,
     undertone: string,
     skinTone: string,
+    budgetRange: PriceRange | null = null,
   ): Promise<RecommendedListingDto[]> {
     const datasetMatches = await rankListingsFromDataset(this.db, affiliatorId, personalColor, undertone, skinTone, TOP_N);
     const matchedListingIds = new Set(datasetMatches.map((m) => m.listingId));
@@ -210,10 +231,13 @@ export class LeadService {
     });
     const listingById = new Map(listingRows.map((row) => [row.id, toListingDto(row)]));
 
+    const inBudget = (listing: ListingDto): boolean =>
+      !budgetRange || (listing.price >= budgetRange.min && listing.price <= budgetRange.max);
+
     const results: RecommendedListingDto[] = [];
     for (const match of datasetMatches) {
       const listing = listingById.get(match.listingId);
-      if (!listing) continue;
+      if (!listing || !inBudget(listing)) continue;
       results.push({
         product: listing,
         matchScore: match.matchScore,
@@ -222,17 +246,43 @@ export class LeadService {
       });
     }
 
+    // Already-considered listings (whether they made it into `results` or were
+    // skipped for being out of budget) shouldn't be re-suggested as filler.
+    const excludeIds = new Set(matchedListingIds);
+    const fillListings = (extraWhere: Prisma.AffiliatorListingWhereInput, take: number) =>
+      take <= 0
+        ? Promise.resolve([])
+        : this.db.affiliatorListing.findMany({
+            where: { affiliatorId, status: 'ACTIVE', id: { notIn: [...excludeIds] }, ...extraWhere },
+            include: { product: true },
+            orderBy: { matchScoreWeight: 'desc' },
+            take,
+          });
+
     if (results.length < TOP_N) {
-      const fillerRows = await this.db.affiliatorListing.findMany({
-        where: {
-          affiliatorId,
-          status: 'ACTIVE',
-          id: { notIn: [...matchedListingIds] },
-        },
-        include: { product: true },
-        orderBy: { matchScoreWeight: 'desc' },
-        take: TOP_N - results.length,
-      });
+      const priceWhere: Prisma.AffiliatorListingWhereInput = budgetRange
+        ? {
+            OR: [
+              {
+                priceOverride: {
+                  gte: budgetRange.min,
+                  ...(Number.isFinite(budgetRange.max) ? { lte: budgetRange.max } : {}),
+                },
+              },
+              {
+                priceOverride: null,
+                product: {
+                  price: {
+                    gte: budgetRange.min,
+                    ...(Number.isFinite(budgetRange.max) ? { lte: budgetRange.max } : {}),
+                  },
+                },
+              },
+            ],
+          }
+        : {};
+
+      const fillerRows = await fillListings(priceWhere, TOP_N - results.length);
       for (const row of fillerRows) {
         const listing = toListingDto(row);
         results.push({
@@ -241,7 +291,11 @@ export class LeadService {
           recommendedShade: listing.shade ?? undefined,
           aiReason: `Popular pick from this creator's catalog`,
         });
+        excludeIds.add(row.id);
       }
+      // Deliberately no budget-unconstrained top-up here: showing fewer than
+      // TOP_N (or zero) real, in-budget products is more honest than padding
+      // the list with ones outside the price range the visitor picked.
     }
 
     return results;

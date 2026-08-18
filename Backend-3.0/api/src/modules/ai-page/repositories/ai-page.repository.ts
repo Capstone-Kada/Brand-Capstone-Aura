@@ -120,7 +120,7 @@ export class AIPageRepository implements IAIPageRepository {
   }
 
   async findPublicBySlug(slug: string): Promise<PublicAIPageDto | null> {
-    const row = await this.db.aIPage.findUnique({
+    let row = await this.db.aIPage.findUnique({
       where: { slug },
       include: {
         ...pageInclude,
@@ -130,6 +130,35 @@ export class AIPageRepository implements IAIPageRepository {
         },
       },
     });
+
+    // Lazy-create default AI Page if missing but the affiliator is active
+    if (!row) {
+      const affiliator = await this.db.affiliatorProfile.findFirst({
+        where: { handle: slug, status: 'APPROVED' },
+      });
+      if (affiliator) {
+        row = await this.db.aIPage.create({
+          data: {
+            affiliatorId: affiliator.id,
+            slug: affiliator.handle,
+            title: `${affiliator.handle}'s Beauty AI`,
+            bio: affiliator.niche ? `Find your perfect makeup matches for ${affiliator.niche}` : 'Find your perfect shade with my AI skin analyst!',
+            primaryColor: '#F26CA7',
+            accentColor: '#18181B',
+            status: 'PUBLISHED',
+            allowCameraUpload: true,
+          },
+          include: {
+            ...pageInclude,
+            featured: {
+              orderBy: { position: 'asc' },
+              include: { listing: { include: { product: true } } },
+            },
+          },
+        });
+      }
+    }
+
     if (!row) return null;
 
     const dto = await this.mapRow(row as unknown as AIPageRow);

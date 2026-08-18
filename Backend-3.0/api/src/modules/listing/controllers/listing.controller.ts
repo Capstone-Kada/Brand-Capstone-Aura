@@ -17,6 +17,10 @@ export const autoFillSchema = z.object({
   productIds: z.array(z.string().uuid()).min(1).max(100),
 });
 
+export const idParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
 export const updateListingSchema = z.object({
   affiliateUrl: z.string().url().optional(),
   priceOverride: z.number().int().positive().optional(),

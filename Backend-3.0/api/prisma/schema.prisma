@@ -78,6 +78,8 @@ model User {
   isActive           Boolean   @default(true) @map("is_active")
   twoFactorSecret    String?   @map("two_factor_secret")
   isTwoFactorEnabled Boolean   @default(false) @map("is_two_factor_enabled")
+  isEmailVerified    Boolean   @default(false) @map("is_email_verified")
+  emailVerifiedAt    DateTime? @map("email_verified_at")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
@@ -85,6 +87,7 @@ model User {
   affiliatorProfile AffiliatorProfile?
   refreshTokens    RefreshToken[]
   passwordResets   PasswordResetToken[]
+  emailVerifications EmailVerificationToken[]
   scans            Scan[]
   recommendations  Recommendation[]
   scanHistories    ScanHistory[]
@@ -297,6 +300,20 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
 }
 
 /// Makeup type taxonomy (Foundation, Concealer, …).

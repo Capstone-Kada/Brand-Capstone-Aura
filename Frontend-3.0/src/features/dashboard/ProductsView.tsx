@@ -17,6 +17,24 @@ import {
 import { Product, SkinTone, Undertone, SkinType, SkinConcern } from '../../types';
 import { Card, Button, Input, Select, Badge, Modal, Drawer } from '../../components/ui/UIComponents';
 
+/**
+ * Falls back to a neutral placeholder instead of the browser's broken-image
+ * icon when `src` fails to load — most commonly a Google Images "copy image
+ * address" link, which points at an HTML wrapper page rather than a real
+ * image file and can never load as an <img src>.
+ */
+const ProductImage: React.FC<{ src?: string; alt: string; className: string }> = ({ src, alt, className }) => {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div className={`${className} bg-zinc-100 flex items-center justify-center text-zinc-300 shrink-0`}>
+        <ImageIcon className="w-1/2 h-1/2" />
+      </div>
+    );
+  }
+  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+};
+
 interface ProductsViewProps {
   products: Product[];
   /** Full master product catalog (all brands/products in the system), used only to auto-fill new listings. */
@@ -237,7 +255,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               {filteredProducts.map((prod) => (
                 <tr key={prod.id} className="hover:bg-zinc-50/80 transition-colors">
                   <td className="py-3 font-bold text-zinc-900 flex items-center gap-3 min-w-[200px]">
-                    <img src={prod.imageUrl} alt={prod.name} className="w-10 h-10 rounded-xl object-cover shrink-0" />
+                    <ProductImage src={prod.imageUrl} alt={prod.name} className="w-10 h-10 rounded-xl object-cover" />
                     <div>
                       <span className="block text-xs font-bold text-zinc-900 line-clamp-1">{prod.name}</span>
                       <span className="block text-[10px] text-zinc-400 font-medium">{prod.brand} {prod.shade ? `• ${prod.shade}` : ''}</span>
@@ -470,7 +488,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               <div className="flex gap-3 items-center">
                 {imageUrl ? (
                   <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-50 shrink-0 group">
-                    <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    <ProductImage src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
                     <button
                       type="button"
                       onClick={() => setImageUrl('')}
@@ -497,7 +515,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               <div className="flex gap-2.5 items-center">
                 {imageUrl ? (
                   <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 shrink-0">
-                    <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    <ProductImage src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
                   </div>
                 ) : null}
                 <div className="flex-1">
@@ -508,6 +526,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   />
                 </div>
               </div>
+            )}
+            {imageUploadType === 'url' && (
+              <p className="text-[10px] text-zinc-400 mt-1.5">
+                Gunakan link gambar langsung (berakhiran .jpg/.png/.webp), bukan link halaman hasil pencarian Google Images — link tersebut tidak akan bisa dimuat sebagai gambar.
+              </p>
             )}
           </div>
 

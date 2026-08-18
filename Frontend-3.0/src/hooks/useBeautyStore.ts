@@ -47,6 +47,14 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong.';
 }
 
+function errorCode(err: unknown): string | undefined {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const response = (err as { response?: { data?: { error?: { code?: string } } } }).response;
+    return response?.data?.error?.code;
+  }
+  return undefined;
+}
+
 const PENDING_PRODUCTS_STORAGE_KEY = 'aura_pending_products';
 
 const DEFAULT_PENDING_PRODUCTS: Product[] = [
@@ -95,12 +103,18 @@ const saveStoredCustomProducts = (items: Product[]) => {
 export function useBeautyStore() {
   const [currentRoute, setCurrentRoute] = useState<RouteView>(() => {
     const path = window.location.pathname.replace('/', '');
+    if (path === 'verify-email') {
+      return 'verify-email';
+    }
     // If the path looks like a username/slug (not empty), default to public-recommendation
     if (path && path.length > 2) {
       return 'public-recommendation';
     }
     return 'landing';
   });
+  const [emailVerifyToken] = useState<string>(
+    () => new URLSearchParams(window.location.search).get('token') || '',
+  );
   const [user, setUser] = useState<UserProfile | null>(null);
   const [affiliators, setAffiliators] = useState<AffiliatorAccount[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -221,7 +235,12 @@ export function useBeautyStore() {
       setChartData([]);
       setUndertoneStats([]);
       setConcernStats([]);
-      setCurrentRoute('landing');
+      setCurrentRoute((prev) => {
+        if (prev === 'public-recommendation' || prev === 'internal-preview') {
+          return prev;
+        }
+        return 'landing';
+      });
       addToast('Sesi Berakhir', 'Silakan login kembali untuk melanjutkan.', 'error');
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
@@ -229,7 +248,10 @@ export function useBeautyStore() {
   }, [addToast]);
 
   const loginAs = useCallback(
-    async (email: string, password: string): Promise<{ requires2FA?: boolean; userId?: string } | void> => {
+    async (
+      email: string,
+      password: string,
+    ): Promise<{ requires2FA?: boolean; userId?: string; requiresEmailVerification?: boolean } | void> => {
       setIsLoadingWorkspace(true);
       try {
         const response = await api.auth.login(email, password);
@@ -248,6 +270,9 @@ export function useBeautyStore() {
           addToast('Affiliator Signed In', 'Welcome back to your creator dashboard.', 'success');
         }
       } catch (err) {
+        if (errorCode(err) === 'EMAIL_NOT_VERIFIED') {
+          return { requiresEmailVerification: true };
+        }
         addToast('Sign In Failed', errorMessage(err), 'error');
         throw err;
       } finally {
@@ -337,20 +362,57 @@ export function useBeautyStore() {
   );
 
   const registerAffiliator = useCallback(
-    async (email: string, password: string, name: string) => {
+    async (
+      email: string,
+      password: string,
+      name: string,
+    ): Promise<{ requiresEmailVerification?: boolean; email?: string; retryAfterSeconds?: number } | void> => {
       setIsLoadingWorkspace(true);
       try {
-        await api.auth.register({ email, password, name, accountType: 'AFFILIATOR' });
-        await loadAffiliatorWorkspace();
-        setCurrentRoute('dashboard');
-        addToast('Account Created', 'Your affiliator dashboard is ready — pending admin approval.', 'success');
+        const result = await api.auth.register({ email, password, name, accountType: 'AFFILIATOR' });
+        if (result.requiresEmailVerification) {
+          addToast('Verify Your Email', 'We sent a verification link to your inbox.', 'success');
+          return {
+            requiresEmailVerification: true,
+            email: result.email ?? email,
+            retryAfterSeconds: result.retryAfterSeconds,
+          };
+        }
       } catch (err) {
         addToast('Registration Failed', errorMessage(err), 'error');
+        throw err;
       } finally {
         setIsLoadingWorkspace(false);
       }
     },
-    [addToast, loadAffiliatorWorkspace],
+    [addToast],
+  );
+
+  const verifyEmailToken = useCallback(
+    async (token: string): Promise<boolean> => {
+      try {
+        await api.auth.verifyEmail(token);
+        addToast('Email Verified', 'You can now sign in to your account.', 'success');
+        return true;
+      } catch (err) {
+        addToast('Verification Failed', errorMessage(err), 'error');
+        return false;
+      }
+    },
+    [addToast],
+  );
+
+  const resendVerification = useCallback(
+    async (email: string): Promise<{ retryAfterSeconds?: number } | void> => {
+      try {
+        const result = await api.auth.resendVerification(email);
+        addToast('Email Sent', result.message, 'success');
+        return { retryAfterSeconds: result.retryAfterSeconds };
+      } catch (err) {
+        addToast('Failed to Resend', errorMessage(err), 'error');
+      }
+    },
+    [addToast],
   );
 
   const updateAffiliatorStatus = useCallback(
@@ -404,7 +466,13 @@ export function useBeautyStore() {
     }
     setCurrentRoute(route);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+
+    // Dashboard/Analytics numbers otherwise only ever reflect the initial
+    // session-restore fetch — refresh on every visit so new scans/clicks show up.
+    if ((route === 'dashboard' || route === 'analytics') && user?.role === 'affiliator' && getAccessToken()) {
+      loadAffiliatorWorkspace().catch(() => {});
+    }
+  }, [user, loadAffiliatorWorkspace]);
 
   // Product CRUD — admin writes to the master catalog (/products), affiliators write to their own catalog (/listings).
   const addProduct = useCallback(
@@ -472,6 +540,14 @@ export function useBeautyStore() {
 
   const updateProduct = useCallback(
     async (id: string, updated: Partial<Product>) => {
+      if (id.startsWith('custom-')) {
+        const currentCustom = getStoredCustomProducts();
+        const updatedCustom = currentCustom.map((p) => (p.id === id ? { ...p, ...updated } : p));
+        saveStoredCustomProducts(updatedCustom);
+        setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
+        addToast('Product Updated', 'Changes saved successfully.', 'info');
+        return;
+      }
       if (user?.role === 'admin') {
         try {
           const product = await api.products.adminUpdate(id, {
@@ -613,6 +689,24 @@ export function useBeautyStore() {
     [addToast, user],
   );
 
+  // Avatar Upload — uploads to storage and persists avatarUrl in one request.
+  const uploadAvatar = useCallback(
+    async (file: File) => {
+      if (user?.role === 'admin') {
+        addToast('Not Available', 'Admin avatar changes are local-only in this demo.', 'info');
+        return;
+      }
+      try {
+        const profile = await api.affiliator.uploadAvatar(file);
+        setUser(mapAffiliatorToUserProfile(profile, 'affiliator'));
+        addToast('Avatar Updated', 'Your new profile photo is live.', 'success');
+      } catch (err) {
+        addToast('Upload Failed', errorMessage(err), 'error');
+      }
+    },
+    [addToast, user],
+  );
+
   // Generate new API Key
   const regenerateApiKey = useCallback(async () => {
     if (user?.role === 'admin') {
@@ -630,56 +724,55 @@ export function useBeautyStore() {
 
   // Public Selfie Scan — real AI scan via POST /leads for the active AIPage slug.
   const startSelfieScan = useCallback(
-    (imageSrc: string, skinPref?: string, finishPref?: string, budgetPref?: string) => {
+    async (imageSrc: string, skinPref?: string, finishPref?: string, budgetPref?: string, isUpload: boolean = false): Promise<boolean> => {
       setScannedImage(imageSrc);
       setIsAnalyzing(true);
       setAnalysisStep(1);
       setScanResult(null);
 
-      void (async () => {
-        try {
-          const blob = await (await fetch(imageSrc)).blob();
-          const form = new FormData();
-          form.append('slug', activePageSlug);
-          form.append('image', blob, 'scan.jpg');
-          if (skinPref) form.append('skinPref', skinPref);
-          if (finishPref) form.append('finishPref', finishPref);
-          if (budgetPref) form.append('budgetPref', budgetPref);
+      try {
+        const blob = await (await fetch(imageSrc)).blob();
+        const form = new FormData();
+        form.append('slug', activePageSlug);
+        form.append('image', blob, 'scan.jpg');
+        if (skinPref) form.append('skinPref', skinPref);
+        if (finishPref) form.append('finishPref', finishPref);
+        if (budgetPref) form.append('budgetPref', budgetPref);
 
-          const result = await api.leads.submit(form);
-          setScanResult(mapScanResultDto(result));
-          setAnalysisStep(4);
+        const result = await api.leads.submit(form);
+        setScanResult(mapScanResultDto(result));
+        setAnalysisStep(4);
 
+        if (getAccessToken()) {
           const leadRows = await api.leads.list().catch(() => null);
           if (leadRows) setLeads(leadRows.map(mapCustomerLeadDto));
-        } catch (err) {
-          console.warn('Backend AI Scan API unreachable or error, serving fallback AI analysis:', err);
-          // Fallback scan result so the UI scan flow always renders rich AI metrics
-          setScanResult({
-            confidence: 96.8,
-            personalColor: 'Summer',
-            undertone: 'Cool',
-            skinTone: 'Medium',
-            faceShape: 'Oval',
-            matchSummary: 'Wah! Kulit Medium Cool kamu terlihat cantik alami. Berdasarkan jawaban kuesioner kamu, produk-produk ini direkomendasikan agar memberikan hasil akhir sempurna yang kamu impikan tanpa membuat kulit terasa berat.',
-            bestColorPalette: [
-              { name: 'Mauve Pink', colorHex: '#C77D9E' },
-              { name: 'Dusty Rose', colorHex: '#D4A5B8' },
-              { name: 'Soft Berry', colorHex: '#9E4B6C' },
-              { name: 'Cool Nude', colorHex: '#D8B4A6' }
-            ],
-            recommendedProducts: products.slice(0, 3).map((p, idx) => ({
-              product: p,
-              matchScore: 98 - idx * 3,
-              recommendedShade: p.shade || 'Natural Shade',
-              aiReason: `Kombinasi spektrum ${p.shade || 'Natural'} memberikan kecocokan ${98 - idx * 3}% untuk undertone Cool Medium.`
-            }))
-          });
-          setAnalysisStep(4);
-        } finally {
-          setIsAnalyzing(false);
         }
-      })();
+        return true;
+      } catch (err: unknown) {
+        // Cek jika error validasi wajah / warna kulit dari Backend (HTTP 422 atau pesan penolakan)
+        const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string }; message?: string } }; message?: string };
+        const status = axiosErr?.response?.status;
+        const errMsg = axiosErr?.response?.data?.error?.message || axiosErr?.response?.data?.message || axiosErr?.message || '';
+        const isFaceValidationError = status === 422 || /wajah|face|kulit|pigmen|proporsi|alien|anomali|skintone|undertone/i.test(errMsg);
+
+        // Any scan failure is a real rejection — never fabricate a fake successful
+        // result, otherwise scans that were actually rejected (or never persisted)
+        // would look "detected" to the user and dashboard counts would be wrong.
+        console.warn('Scan rejected or failed:', errMsg || err);
+        setScanResult(null);
+        setScannedImage(null);
+        setAnalysisStep(0);
+        addToast(
+          isFaceValidationError ? 'Wajah Tidak Terdeteksi' : 'Scan Gagal',
+          isFaceValidationError
+            ? (errMsg || 'Foto yang Anda unggah bukan wajah manusia yang valid. Mohon unggah foto selfie yang jelas.')
+            : 'Terjadi kesalahan saat memproses scan. Silakan coba lagi.',
+          'error'
+        );
+        return false;
+      } finally {
+        setIsAnalyzing(false);
+      }
     },
     [activePageSlug, addToast],
   );
@@ -712,11 +805,15 @@ export function useBeautyStore() {
     disable2FA,
     loginWithGoogle,
     registerAffiliator,
+    emailVerifyToken,
+    verifyEmailToken,
+    resendVerification,
     affiliators,
     updateAffiliatorStatus,
     updateAffiliator,
     deleteAffiliator,
     updateProfile,
+    uploadAvatar,
     regenerateApiKey,
     products,
     masterCatalog,
